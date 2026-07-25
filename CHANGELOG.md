@@ -13,6 +13,22 @@ local edits."
 
 ---
 
+## 0.12.0
+
+- `import_check.py` — health-checks an exported robot before you try to drive
+  it. Every failure mode in CAD_PREP.md is silent: a robot with no materials
+  loads fine and weighs nothing, an unmated part loads fine and floats away, a
+  model with no `dof_` mates loads fine and is one rigid lump. This names which
+  one you have
+- Checks: rigid lump, disconnected bodies, missing materials, degenerate
+  inertia, missing actuators, rigid mecanum rollers, geometry that starts
+  interpenetrating, and whether it settles or explodes
+- Rigid-roller detection reads GEOM names as well as body names, because a CAD
+  export models rollers as geometry inside a rigid wheel body — there is no
+  roller *body* to find. Without that it passed a robot that could not strafe
+- Free-body detection ranks by subtree mass instead of counting, so a legitimate
+  game element isn't reported as the robot being in pieces
+
 ## 0.11.0
 
 Robot configuration, the way a Driver Hub does it.

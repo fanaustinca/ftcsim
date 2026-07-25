@@ -5,7 +5,7 @@ A 3D physics simulator for FIRST Tech Challenge robots, built on
 respects the torque–speed curve, gamepad or keyboard teleop, and an import path
 from Onshape CAD.
 
-**v0.11.0** — see [CHANGELOG.md](CHANGELOG.md). The running version is shown in
+**v0.12.0** — see [CHANGELOG.md](CHANGELOG.md). The running version is shown in
 the bottom-right of the teleop window and by `python version.py`; it includes
 the git hash, so `v0.9.0+d6c7f37-dirty` means release 0.9.0 at commit d6c7f37
 with uncommitted local edits.
@@ -239,6 +239,15 @@ Short version:
 3. **Assign a material to every part** — mass and inertia come from there.
 4. Paste your assembly URL into `onshape_import/config.json`, then
    `./.venv/bin/onshape-to-robot onshape_import`.
+
+### First, check the export
+
+```bash
+./.venv/bin/python import_check.py onshape_import/robot.xml
+```
+
+Names which of the silent failure modes you have — no materials, unmated parts,
+one rigid lump, rigid mecanum rollers, geometry that starts interpenetrating.
 
 ### Then swap the wheels
 

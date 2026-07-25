@@ -167,6 +167,16 @@ would.
 
 ---
 
+## Check the export first
+
+```bash
+./.venv/bin/python import_check.py onshape_import/robot.xml
+```
+
+Everything in the troubleshooting table below is silent — nothing errors, the
+model just behaves wrongly. This tells you which one you've got before you
+spend an hour wondering.
+
 ## After exporting
 
 Two things the export cannot give you:
