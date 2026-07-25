@@ -82,6 +82,7 @@ class RobotConfig:
     drive: dict = field(default_factory=dict)      # position -> MotorEntry
     mechanisms: dict = field(default_factory=dict)  # name -> MotorEntry
     wheel_preset: str = "gobilda_96"
+    _layout: str = ""      # ASCII wheel map, filled in by configure.py
 
     # -- persistence -----------------------------------------------------
 

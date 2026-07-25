@@ -45,8 +45,13 @@ Rename it with a `dof_` prefix:
 - `dof_drive_fl`, `dof_drive_fr`, `dof_drive_bl`, `dof_drive_br`
 - `dof_wrist`, `dof_grip_l`, `dof_grip_r`
 
-Use exactly those drive names and `motors.py` works with no edits. Anything
-else and you're renaming joints after export.
+Use exactly those drive names and `motors.py` works with no edits.
+
+**But you don't have to get the names right.** `configure.py --auto` identifies
+which wheel is which from geometry — wheels are the lowest joints on the robot,
+and front/back and left/right follow from where they sit. It works fine on
+joints called `Revolute_1`..`Revolute_4`. The only thing that genuinely matters
+is the `dof_` prefix, because that's what makes them joints at all.
 
 ### 2. Every part has a material
 

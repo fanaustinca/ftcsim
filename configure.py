@@ -70,7 +70,95 @@ def yes_no(prompt, default=False):
             return False
 
 
-def auto_config(joints, drivetrain="mecanum4"):
+def locate_joints(model_path=None):
+    """Work out where each joint physically sits on the robot.
+
+    You should not have to know which Onshape mate is the front-left wheel.
+    Names are unreliable anyway -- a downloaded model might call them
+    "Revolute 1".."Revolute 4". But the geometry is never ambiguous: wheels sit
+    lowest, and front/back and left/right fall straight out of position.
+
+    Returns {joint_name: (x, y, z)} relative to the robot's root body, with
+    +x forward and +y left.
+    """
+    import mujoco
+    if model_path:
+        model = mujoco.MjModel.from_xml_path(model_path)
+    else:
+        from robot import build_mjcf
+        model = mujoco.MjModel.from_xml_string(build_mjcf())
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+
+    out = {}
+    for j in range(model.njnt):
+        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, j)
+        if not name or name.startswith("rollerj_"):
+            continue
+        if model.jnt_type[j] not in (mujoco.mjtJoint.mjJNT_HINGE,
+                                     mujoco.mjtJoint.mjJNT_SLIDE):
+            continue
+        b = int(model.jnt_bodyid[j])
+        root = int(model.body_rootid[b])
+        out[name] = np.array(data.xpos[b] - data.xpos[root])
+    return out
+
+
+FORWARD_AXES = {
+    "+x": (0, +1), "-x": (0, -1), "+y": (1, +1), "-y": (1, -1),
+}
+
+
+def layout_diagram(positions, corners, forward="+x"):
+    """Draw where the wheels are, so you can check the labels by eye."""
+    if not corners:
+        return "  (couldn't locate the wheels)"
+    pts = {c: positions[j] for j, c in corners.items()}
+    axis, sign = FORWARD_AXES[forward]
+    other = 1 - axis
+    rows = []
+    rows.append(f"  looking down on the robot, forward = {forward}")
+    rows.append("")
+    grid = {("f", "l"): "  ", ("f", "r"): "  ", ("b", "l"): "  ", ("b", "r"): "  "}
+    for c in pts:
+        grid[(c[0], c[1])] = c.upper()
+    rows.append("        FRONT")
+    rows.append("     +---------+")
+    rows.append(f"     | {grid[('f','l')]}   {grid[('f','r')]} |")
+    rows.append("     |         |")
+    rows.append(f"     | {grid[('b','l')]}   {grid[('b','r')]} |")
+    rows.append("     +---------+")
+    rows.append("")
+    for j, c in sorted(corners.items(), key=lambda kv: kv[1]):
+        p = positions[j]
+        rows.append(f"    {c.upper():<3} {j:<18} "
+                    f"fwd {p[axis]*sign:+.3f}  side {p[other]:+.3f}")
+    return "\n".join(rows)
+
+
+def classify_wheels(positions, n_needed, forward="+x"):
+    """Pick the drive joints from their positions, and label each corner.
+
+    Wheels are the lowest joints on the robot, and once you have them,
+    front/back and left/right are just comparisons against their centroid.
+    """
+    if len(positions) < n_needed:
+        return {}
+    # Lowest joints are the wheels.
+    lowest = sorted(positions.items(), key=lambda kv: kv[1][2])[:n_needed]
+    centre = np.mean([p for _, p in lowest], axis=0)
+    axis, sign = FORWARD_AXES[forward]
+    side = 1 - axis
+
+    labelled = {}
+    for name, p in lowest:
+        front = (p[axis] - centre[axis]) * sign >= 0
+        left = (p[side] - centre[side]) * sign >= 0
+        labelled[name] = ("f" if front else "b") + ("l" if left else "r")
+    return labelled
+
+
+def auto_config(joints, drivetrain="mecanum4", model_path=None, forward="+x"):
     """Best-effort guess, for when you'd rather edit JSON than answer prompts.
 
     Matches joints to wheel positions by looking for the position code as a
@@ -83,15 +171,30 @@ def auto_config(joints, drivetrain="mecanum4"):
     spec = DRIVETRAINS[drivetrain]
     cfg = RobotConfig(drivetrain=drivetrain)
     used = []
+
+    # Geometry beats names. Only fall back to name matching if we can't
+    # locate the joints (e.g. the model wouldn't load).
+    by_position = {}
+    try:
+        locs = locate_joints(model_path)
+        corners = classify_wheels(locs, len(spec["positions"]), forward)
+        by_position = {corner: jname for jname, corner in corners.items()}
+        cfg._layout = layout_diagram(locs, corners, forward)
+    except Exception:
+        pass
     # Ports go by how many motors we've actually assigned, not by position
     # index -- otherwise a gap (an unmatched wheel) leaves a port index unused
     # and the mechanism loop below reuses it.
     next_port = 0
 
     for pos in spec["positions"]:
-        match = next((j for j in joints
-                      if j not in used
-                      and pos in j.lower().replace("-", "_").split("_")), None)
+        match = by_position.get(pos)
+        if match in used:
+            match = None
+        if match is None:
+            match = next((j for j in joints
+                          if j not in used
+                          and pos in j.lower().replace("-", "_").split("_")), None)
         if match is None:
             # Leave it unassigned rather than grabbing an unrelated joint.
             # Grabbing whatever was free assigned `shoulder` and `wrist` as
@@ -168,6 +271,8 @@ def main():
     ap.add_argument("--auto", action="store_true",
                     help="guess everything and write it out, no prompts")
     ap.add_argument("--drivetrain", default="mecanum4", choices=list(DRIVETRAINS))
+    ap.add_argument("--forward", default="+x", choices=list(FORWARD_AXES),
+                    help="which axis points forwards in the CAD (default +x)")
     ap.add_argument("--no-detect", action="store_true",
                     help="skip measuring motor directions; guess from names")
     a = ap.parse_args()
@@ -186,7 +291,11 @@ def main():
         print(f"  - {j}")
 
     if a.auto:
-        cfg = auto_config(joints, a.drivetrain)
+        cfg = auto_config(joints, a.drivetrain, a.model, a.forward)
+        if getattr(cfg, "_layout", None):
+            print("\nWheel positions, worked out from geometry (not names):\n")
+            print(cfg._layout)
+            print("\n  If FRONT is the wrong end, re-run with --forward -x")
         if not a.no_detect and len(cfg.drive) == len(DRIVETRAINS[a.drivetrain]["positions"]):
             print("\nMeasuring motor directions (driving each one alone)...")
             moved = detect_reversal(cfg, a.model)

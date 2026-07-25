@@ -5,7 +5,7 @@ A 3D physics simulator for FIRST Tech Challenge robots, built on
 respects the torque–speed curve, gamepad or keyboard teleop, and an import path
 from Onshape CAD.
 
-**v0.12.0** — see [CHANGELOG.md](CHANGELOG.md). The running version is shown in
+**v0.13.0** — see [CHANGELOG.md](CHANGELOG.md). The running version is shown in
 the bottom-right of the teleop window and by `python version.py`; it includes
 the git hash, so `v0.9.0+d6c7f37-dirty` means release 0.9.0 at commit d6c7f37
 with uncommitted local edits.
@@ -187,6 +187,12 @@ drive motor" without renaming anything.
 
 Drivetrains: 4-wheel mecanum, 4- and 6-wheel tank, 2-wheel tank. Tank layouts
 ignore sideways input, the same as the real thing.
+
+**You don't need to know which mate is which wheel.** `--auto` finds them from
+geometry — wheels are the lowest joints, and front/back and left/right follow
+from position. It works on a model whose joints are named `Revolute_1`..`4`,
+and prints a map so you can check. Use `--forward -x` if your CAD faces the
+other way.
 
 **Reversal is measured, not guessed.** `--auto` drives each motor on its own and
 watches which way the robot goes. The usual heuristic — "right-side motors are

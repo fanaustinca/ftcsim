@@ -13,6 +13,20 @@ local edits."
 
 ---
 
+## 0.13.0
+
+You no longer need to know which Onshape mate is which wheel.
+
+- `configure.py --auto` identifies wheels from **geometry, not names**. Wheels
+  are the lowest joints on the robot; once you have them, front/back and
+  left/right fall out of position. Verified against a model whose joints are
+  called `Revolute_1`..`Revolute_4` in an order unrelated to the layout — all
+  four corners identified correctly
+- Prints an ASCII map of where each wheel is, so you can check it by eye
+- `--forward {+x,-x,+y,-y}` for CAD modelled facing a different direction.
+  Verified front/back swap when it flips
+- Name matching is now only a fallback for when the model can't be loaded
+
 ## 0.12.0
 
 - `import_check.py` — health-checks an exported robot before you try to drive
