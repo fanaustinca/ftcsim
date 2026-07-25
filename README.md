@@ -21,8 +21,8 @@ Honest state of things, so you know what you're getting:
 | Mecanum drivetrain (40 hinged rollers) | **Working**, validated |
 | Motor torque–speed model, encoders, IMU | **Working** |
 | Arm with gravity-feedforward hold | **Working** |
-| Keyboard teleop | **Working** |
-| Gamepad teleop | **Untested** — written, never run against real hardware |
+| Keyboard teleop, single window, mouse camera | **Working** |
+| Gamepad teleop | **Untested** — merges with keyboard, never run against real hardware |
 | Wheel presets + CAD wheel swapping | **Working** |
 | Onshape import | **Wired up, never run** — needs your API keys |
 | Claw picking up a game element | **Not working** — see Known Issues |
@@ -52,8 +52,7 @@ Optional, only if you want Onshape import:
 ./.venv/bin/python teleop.py
 ```
 
-Two windows open: the 3D view and a small control panel. **Click the control
-panel** — that's what has keyboard focus.
+One window. Everything is ours — keys, mouse, camera.
 
 | key | action | key | action |
 |---|---|---|---|
@@ -61,15 +60,23 @@ panel** — that's what has keyboard focus.
 | `A` / `D` | strafe left / right | `G` | toggle field-centric |
 | `Q` / `E` | turn left / right | `BKSP` | reset |
 | `R` / `F` | arm up / down | `ESC` | quit |
+| drag mouse | orbit camera | scroll | zoom |
+| `TAB` | cycle camera (chase / close / overhead / wide) | | |
 
-Plug in an Xbox-style controller before launching and it takes over.
+A plugged-in Xbox-style controller works *alongside* the keyboard rather than
+replacing it.
 
-> **Why a separate window?** MuJoCo's viewer binds every letter A–Z to a render
-> flag — `W` is wireframe, `S` is shadow, `R` is reflection. A `key_callback`
-> runs *in addition* to those, so driving with WASD inside the viewer also
-> strobes the render settings. Owning the keyboard in our own window is the only
-> clean fix. Keys typed into the 3D window still hit MuJoCo's shortcuts; that's
-> the viewer's behaviour, not ours.
+> **Why no MuJoCo viewer window?** MuJoCo's built-in viewer binds every letter
+> A–Z to a render flag — `W` is wireframe, `S` is shadow, `R` is reflection,
+> `G` is fog. Those are handled inside its C library, so they fire whenever that
+> window has focus and Python can neither intercept nor undo them: driving with
+> WASD turned the robot into a wireframe grid. So we don't use it. MuJoCo
+> renders offscreen, we blit the image into our own pygame window, and we own
+> every event. Costs roughly 8 fps; worth it.
+>
+> Interactive driving uses `quality="fast"` (1024 shadow map, no floor
+> reflection) for ~52 fps. Shadows and reflections together cost ~19 ms/frame.
+> Video and stills use `quality="high"`.
 
 ### Validate the drivetrain
 

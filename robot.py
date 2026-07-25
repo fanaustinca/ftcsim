@@ -49,10 +49,13 @@ WHEELS = [
 ]
 
 
-def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0):
+def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0, quality="high"):
     """Build the model.
 
     wheel_preset   which mecanum wheel is fitted (see wheels.PRESETS)
+    quality        "high" for renders and video, "fast" for interactive driving.
+                   Shadows and floor reflection together cost ~19 ms a frame,
+                   which is the difference between 34 fps and 52 fps.
     push_block_kg  if >0, drops a heavy block in front of the robot. Driving
                    into it is a pushing match, which is traction-limited rather
                    than motor-limited -- the only way roller grip shows up in
@@ -103,6 +106,9 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0):
                     density=2300, rgba="0.85 0.72 0.15 1"),
     ])
 
+    shadowsize = 4096 if quality == "high" else 1024
+    reflect = 0.05 if quality == "high" else 0.0
+
     wheel_z = -CHASSIS_H / 2
     chassis_z = preset.radius + CHASSIS_H / 2 + 0.002
     # Each finger: a flat aluminium plate reaching forward, plus an inward-facing
@@ -148,7 +154,7 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0):
   <visual>
     <headlight diffuse="0.6 0.6 0.6" ambient="0.4 0.4 0.4"/>
     <global azimuth="140" elevation="-25" offwidth="1920" offheight="1080"/>
-    <quality shadowsize="4096"/>
+    <quality shadowsize="{shadowsize}"/>
   </visual>
 
   <asset>
@@ -157,7 +163,7 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0):
     <texture name="tiles" type="2d" builtin="checker"
              rgb1="0.22 0.24 0.28" rgb2="0.17 0.19 0.23" width="512" height="512"/>
     <material name="floor" texture="tiles" texrepeat="{FIELD_SIZE/TILE:.4f} {FIELD_SIZE/TILE:.4f}"
-              reflectance="0.05"/>
+              reflectance="{reflect}"/>
   </asset>
 
   <worldbody>
