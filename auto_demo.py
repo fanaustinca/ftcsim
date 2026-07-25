@@ -27,8 +27,8 @@ FPS = 50
 
 # Found by tune_grab.py rather than by hand. stop_x/shoulder chosen from a cell
 # whose neighbours also work, so the routine tolerates a bit of drive error.
-STOP_X = 0.65
-GRAB_SHOULDER = 0.00
+STOP_X = 0.69
+GRAB_SHOULDER = -0.40
 WRIST_DOWN = 1.45      # positive rotates the claw to point downward
 frames = []
 log = []

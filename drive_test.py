@@ -24,10 +24,14 @@ def run(fwd, strafe, turn, seconds=2.0):
         mujoco.mj_step(model, data)
 
     x0, y0, h0 = bot.pose()
-    bot.drive(fwd, strafe, turn)
+    bot.heading_target = None
 
     peak_rads = 0.0
     for _ in range(int(seconds / model.opt.timestep)):
+        # drive_held is a feedback controller, so it has to run every step --
+        # setting it once before the loop (as this used to) just latched a
+        # fixed wheel command and the heading correction never happened.
+        bot.drive_held(fwd, strafe, turn)
         bot.hold_arm(1.2)
         bot.apply()
         mujoco.mj_step(model, data)

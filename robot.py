@@ -71,7 +71,7 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0, quality="high"):
     <body name="pushblock" pos="0.75 0 0.12">
       <freejoint/>
       <geom name="pushblockg" type="box" size="0.18 0.18 0.12"
-            mass="{push_block_kg}" contype="1" conaffinity="1"
+            mass="{{push_block_kg}}" {st.col(st.GRP_GAME)}
             friction="0.9 0.01 0.001" rgba="0.75 0.25 0.30 1"/>
     </body>"""
 
@@ -95,12 +95,30 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0, quality="high"):
     deck = st.plate("deck", CHASSIS_L, CHASSIS_W, (0, 0, deck_z))
     deck_top = deck_z + st.PLATE_T / 2
 
+    # Arm tower. Without it the shoulder sits ~28 mm above the deck, so lowering
+    # the arm drives the boom into the deck long before the claw reaches the
+    # floor -- the arm bottoms out at -0.05 rad instead of the -0.44 it needs.
+    # Real FTC arm robots put the pivot on a riser for exactly this reason.
+    # Height chosen so the boom still clears the deck's front edge at full
+    # reach-down: clearance needs H > (pivot-to-edge) * tan(theta) = 0.31*0.47.
+    RISER_H = 0.16
+    riser_x = -CHASSIS_L / 2 + 0.05
+    riser = "\n        ".join(
+        st.box_part(f"riser_{side}", (0.055, 0.005, RISER_H),
+                    (riser_x, sgn * 0.036, deck_top + RISER_H / 2),
+                    density=st.AL_6061, rgba="0.62 0.64 0.68 1")
+        for side, sgn in (("l", 1), ("r", -1)))
+    arm_pivot_z = deck_top + RISER_H
+
     motors = "\n        ".join(
         st.motor(f"motor_{n}", (x, y * 0.72, frame_z), euler="1.5708 0 0")
         for n, x, y, _ in WHEELS)
 
     electronics = "\n        ".join([
-        st.box_part("control_hub", (0.145, 0.095, 0.030), (-0.03, 0.055, deck_top + 0.015),
+        # The arm sweeps a corridor at |y| < 0.024, so the electronics have to sit
+        # outboard of it. The hub was at y=0.055 (inner edge y=0.007), which put
+        # it directly in the arm's path -- 14 mm of interpenetration at rest.
+        st.box_part("control_hub", (0.145, 0.095, 0.030), (-0.03, 0.083, deck_top + 0.015),
                     density=900, rgba="0.15 0.16 0.19 1"),
         st.box_part("battery", (0.135, 0.048, 0.042), (-0.03, -0.075, deck_top + 0.021),
                     density=2300, rgba="0.85 0.72 0.15 1"),
@@ -117,17 +135,33 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0, quality="high"):
         return "\n            ".join([
             f'<geom name="finger_{side}_plate" type="box" pos="{FINGER_LEN/2:.4f} 0 0" '
             f'size="{FINGER_LEN/2:.4f} 0.0035 0.016" density="{st.AL_6061}" '
-            f'contype="2" conaffinity="1" group="2" rgba="0.66 0.68 0.72 1"/>',
+            f'{st.col(st.GRP_ARM)} group="2" rgba="0.66 0.68 0.72 1"/>',
             f'<geom name="finger_{side}_pad" type="box" '
             f'pos="{FINGER_LEN*0.72:.4f} {-sgn*0.007:.4f} 0" '
             f'size="{FINGER_LEN*0.30:.4f} 0.004 0.015" density="1100" '
-            f'contype="2" conaffinity="1" group="2" '
+            f'{st.col(st.GRP_ARM)} group="2" '
             f'friction="3.5 0.05 0.005" rgba="0.20 0.20 0.22 1"/>',
         ])
     claw_l, claw_r = claw("l", +1), claw("r", -1)
 
+    # MuJoCo automatically excludes contacts between a body and its PARENT, and
+    # the arm is a child of the chassis -- so no contype/conaffinity setting can
+    # ever make the arm hit the robot it is bolted to. That exclusion is why the
+    # arm swung straight through the deck and the Control Hub.
+    #
+    # Explicit <pair> elements bypass every filter, including the parent rule.
+    # Only the parts the arm can actually reach are listed; the rails sit under
+    # the deck, so anything that would hit them hits the deck first.
+    ARM_GEOMS = ["arm_ch_web", "arm_ch_f1", "arm_ch_f2", "wristg",
+                 "finger_l_plate", "finger_l_pad", "finger_r_plate", "finger_r_pad"]
+    BODY_GEOMS = ["deck", "control_hub", "battery", "riser_l", "riser_r",
+                  "cross_f_web", "cross_f_f1", "cross_f_f2"]
+    contact_pairs = "\n    ".join(
+        f'<pair geom1="{a}" geom2="{b}" condim="3"/>'
+        for a in ARM_GEOMS for b in BODY_GEOMS)
+
     arm_structure = st.u_channel("arm_ch", ARM_LEN, (ARM_LEN / 2, 0, 0), axis="x",
-                                 rgba="0.70 0.72 0.76 1")
+                                 rgba="0.70 0.72 0.76 1", col_group=st.GRP_ARM)
 
     wheels_xml = "".join(
         wheels.wheel_xml(preset, n, x, y, wheel_z, h) for n, x, y, h in WHEELS)
@@ -140,7 +174,7 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0, quality="high"):
     ]):
         walls += f"""
     <geom name="wall{i}" type="box" pos="{wx} {wy} {WALL_HEIGHT/2}"
-          size="{sx} {sy} {WALL_HEIGHT/2}" contype="1" conaffinity="1"
+          size="{sx} {sy} {WALL_HEIGHT/2}" {st.col(st.GRP_WORLD)}
           rgba="0.15 0.17 0.22 1"/>"""
 
     return f"""
@@ -169,7 +203,7 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0, quality="high"):
   <worldbody>
     <light pos="0 0 4" dir="0 0 -1" diffuse="0.7 0.7 0.7" castshadow="true"/>
     <geom name="floor" type="plane" size="{half} {half} 0.1" material="floor"
-          contype="1" conaffinity="1" friction="1.0 0.005 0.0001"/>
+          {st.col(st.GRP_WORLD)} friction="1.0 0.005 0.0001"/>
     {walls}
 
     {push_block}
@@ -178,7 +212,7 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0, quality="high"):
     <body name="cube" pos="0.9 0.0 0.04">
       <freejoint/>
       <geom name="cubeg" type="box" size="0.038 0.038 0.038" mass="0.10"
-            contype="1" conaffinity="1" friction="1.0 0.01 0.001" rgba="0.95 0.62 0.15 1"/>
+            {st.col(st.GRP_GAME)} friction="1.0 0.01 0.001" rgba="0.95 0.62 0.15 1"/>
     </body>
 
     <body name="chassis" pos="0 0 {chassis_z:.5f}">
@@ -190,6 +224,9 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0, quality="high"):
 
       <!-- Polycarbonate deck -->
       {deck}
+
+      <!-- Arm tower -->
+      {riser}
 
       <!-- Drivetrain motors, mounted inboard of each wheel -->
       {motors}
@@ -203,7 +240,7 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0, quality="high"):
 
       <!-- Arm: shoulder pivot at the back, wrist at the far end, 2-finger claw.
            Deliberately simple -- this is the "one mechanism that works" shape. -->
-      <body name="arm" pos="{-CHASSIS_L/2 + 0.05} 0 {deck_top + 0.028:.5f}">
+      <body name="arm" pos="{riser_x:.5f} 0 {arm_pivot_z:.5f}">
         <!-- axis is -Y so that positive angle raises the arm, which is what
              anyone reading the code will assume. Lower limit reaches the floor
              out front; upper limit tucks it back over the chassis. -->
@@ -213,7 +250,7 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0, quality="high"):
         <body name="wrist" pos="{ARM_LEN} 0 0">
           <joint name="wrist" type="hinge" axis="0 1 0" range="-1.7 1.7" damping="0.12"/>
           <geom name="wristg" type="box" size="0.028 0.045 0.014" density="1300"
-                contype="2" conaffinity="1" rgba="0.55 0.58 0.62 1"/>
+                {st.col(st.GRP_ARM)} rgba="0.55 0.58 0.62 1"/>
 
           <!-- Servo body, so there is something visibly driving the claw -->
           <geom name="grip_servo" type="box" pos="0.014 0 0.024" size="0.020 0.011 0.010"
@@ -232,6 +269,10 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0, quality="high"):
       </body>
     </body>
   </worldbody>
+
+  <contact>
+    {contact_pairs}
+  </contact>
 
   <actuator>
     <!-- Plain torque sources for now. Phase 2 wraps these in a real motor model

@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+import structure as st
+
 
 @dataclass(frozen=True)
 class MecanumPreset:
@@ -143,7 +145,7 @@ def rollers_xml(preset, hand, wheel_name):
                 fromto="{a[0]:.5f} {a[1]:.5f} {a[2]:.5f} {b[0]:.5f} {b[1]:.5f} {b[2]:.5f}"
                 mass="{roller_mass:.5f}"
                 friction="{preset.roller_friction} 0.005 0.0001"
-                contype="2" conaffinity="1" rgba="0.16 0.16 0.18 1"/>
+                {st.col(st.GRP_WHEEL)} rgba="0.16 0.16 0.18 1"/>
         </body>""")
     return "".join(out)
 

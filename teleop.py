@@ -5,6 +5,7 @@
     W / S      forward / back          SPACE   toggle claw
     A / D      strafe left / right     G       field-centric on/off
     Q / E      turn left / right       BKSP    reset robot
+    H          gyro heading-hold
     R / F      arm up / down           ESC     quit
 
     left drag    orbit camera          scroll  zoom
@@ -86,6 +87,7 @@ class Sim:
         self.grip = 0.0
         self.grip_closed = False
         self.field_centric = False
+        self.heading_hold = True
         self.arm_target = 1.2
         self.manual_arm = False
         self.running = True
@@ -104,6 +106,9 @@ class Sim:
                     self.grip_closed = not self.grip_closed
                 elif e.key == pygame.K_g:
                     self.field_centric = not self.field_centric
+                elif e.key == pygame.K_h:
+                    self.heading_hold = not self.heading_hold
+                    self.bot.heading_target = None
                 elif e.key == pygame.K_BACKSPACE:
                     mujoco.mj_resetData(self.model, self.data)
                     self.bot.stow()
@@ -185,7 +190,10 @@ class Sim:
                 h = self.bot.heading()
                 fwd, strafe = (fwd * np.cos(-h) - strafe * np.sin(-h),
                                fwd * np.sin(-h) + strafe * np.cos(-h))
-            self.bot.drive(fwd, strafe, s["turn"])
+            if self.heading_hold:
+                self.bot.drive_held(fwd, strafe, s["turn"])
+            else:
+                self.bot.drive(fwd, strafe, s["turn"])
 
             if abs(s["arm"]) > 0.05:
                 self.manual_arm = True
@@ -226,7 +234,7 @@ class Sim:
     def hud(self, cam_name):
         x, y, h = self.bot.pose()
         arm = float(self.data.joint("shoulder").qpos[0])
-        panel = pygame.Surface((252, 186), pygame.SRCALPHA)
+        panel = pygame.Surface((252, 208), pygame.SRCALPHA)
         panel.fill((12, 14, 18, 195))
         self.screen.blit(panel, (14, 14))
 
@@ -239,6 +247,8 @@ class Sim:
             (self.font, f"arm      {arm:+.2f} rad", (222, 226, 232)),
             (self.font, f"claw     {'CLOSED' if self.grip > 0.5 else 'open'}",
              (255, 165, 60) if self.grip > 0.5 else (222, 226, 232)),
+            (self.font, f"hold     {'ON' if self.heading_hold else 'off'}",
+             (110, 220, 140) if self.heading_hold else (150, 155, 165)),
             (self.font, f"camera   {cam_name}"
                         f"{'  (panned)' if np.linalg.norm(self.pan) > 0.01 else ''}",
              (255, 200, 110) if np.linalg.norm(self.pan) > 0.01 else (150, 155, 165)),
@@ -250,7 +260,7 @@ class Sim:
             self.screen.blit(font.render(text, True, colour), (26, yy))
             yy += 21
 
-        hint = ("WASD drive  QE turn  RF arm  SPACE claw  G field  |  "
+        hint = ("WASD drive  QE turn  RF arm  SPACE claw  G field  H hold  |  "
                 "L-drag orbit  R-drag pan  scroll zoom  TAB cam  HOME recentre")
         surf = self.font.render(hint, True, (150, 156, 166))
         bg = pygame.Surface((surf.get_width() + 24, 30), pygame.SRCALPHA)

@@ -25,7 +25,9 @@ Honest state of things, so you know what you're getting:
 | Gamepad teleop | **Untested** — merges with keyboard, never run against real hardware |
 | Wheel presets + CAD wheel swapping | **Working** |
 | Onshape import | **Wired up, never run** — needs your API keys |
-| Claw picking up a game element | **Not working** — see Known Issues |
+| Claw picking up a game element | **Working** |
+| Arm/claw collides with the robot | **Working** |
+| Gyro heading-hold | **Working** |
 
 ## Install
 
@@ -59,7 +61,8 @@ One window. Everything is ours — keys, mouse, camera.
 | `W` / `S` | forward / back | `SPACE` | toggle claw |
 | `A` / `D` | strafe left / right | `G` | toggle field-centric |
 | `Q` / `E` | turn left / right | `BKSP` | reset |
-| `R` / `F` | arm up / down | `ESC` | quit |
+| `R` / `F` | arm up / down | `H` | gyro heading-hold |
+| | | `ESC` | quit |
 | left-drag | orbit camera | scroll | zoom |
 | **right-drag** | **pan camera** | `HOME` | recentre on robot |
 | `TAB` | cycle camera (chase / close / overhead / wide) | | |
@@ -222,6 +225,24 @@ Detected wheels are replaced with generated ones whose rollers are real hinged
 bodies, and the joints come out named `drive_fl` … `drive_br` so `motors.py`
 works unchanged.
 
+## Collisions
+
+Two filters decide whether a pair of geoms can touch, and both bit me:
+
+1. **contype / conaffinity bitmasks.** Geoms collide when
+   `(contype1 & conaffinity2) || (contype2 & conaffinity1)`. Putting every
+   robot part in one bucket to stop the wheel rollers grinding on the frame
+   also silently disabled arm-vs-chassis. `structure.py` now uses separate
+   groups (WORLD / CHASSIS / ARM / WHEEL / GAME) so exactly one pair is
+   disabled.
+2. **MuJoCo automatically excludes a body from its own parent.** The arm is a
+   child of the chassis, so *no bitmask can ever make them collide*. That needs
+   explicit `<pair>` elements, which bypass every filter. This is why the arm
+   swung through the deck no matter what the masks said.
+
+`collision_test.py` asserts the whole matrix plus the behaviour, because a
+collision that silently does not happen produces no error at all.
+
 ## How it fits together
 
 ```
@@ -229,6 +250,7 @@ robot.py       generates the MJCF model (field, chassis, arm) from Python
 wheels.py      mecanum presets + the roller/wheel MJCF generator
 structure.py   material densities + U-channel/plate/motor part builders
 mass_report.py mass budget, arm CG, holding torque, payload capacity
+collision_test.py  asserts every collision pair and that the arm stops on the deck
 motors.py      torque-speed motor model + an FTC-shaped robot API
 teleop.py      gamepad / keyboard driving
 wheel_swap.py  detect and replace CAD wheels in an imported model
@@ -247,10 +269,11 @@ every mechanism "worked".
 
 ## Known issues
 
-- **The claw doesn't pick up the cube.** It closes on it and lifts briefly, but
-  drops it under acceleration. `tune_grab.py` grid-searches approach poses and
-  finds cells that work; making it survive the drive-away is unfinished. Likely
-  needs longer fingers or more wrap — the current ones only touch flat faces.
+- **Strafe yaw is sensitive to centre-of-gravity height.** Raising the arm
+  pivot 130 mm (needed so the arm can reach the floor) took strafe drift from
+  under a degree to as much as 20° over two seconds, and it varies with tiny
+  perturbations. That is real — tall mecanum robots do this. `drive_held()`
+  applies gyro heading-hold and brings it back to ~0.2°; leave it on.
 - **Gamepad path is untested.** Written, never run against a real controller.
 - **Mecanum slip is directionally right, quantitatively wrong.** Fine for
   teleop feel; don't trust it for precise autonomous.

@@ -55,8 +55,8 @@ print(f"{'stop_x':>7} {'shoulder':>9} {'wrist_off':>10} {'lift (m)':>9}")
 print("-" * 40)
 
 for stop_x, shoulder, wrist_off in itertools.product(
-    [0.60, 0.65, 0.70],
-    [-0.10, 0.00, 0.10],
+    [0.55, 0.62, 0.69],
+    [-0.40, -0.25, -0.10],
     [1.45, 1.10, 0.75],
 ):
     lift = attempt(stop_x, shoulder, wrist_off)

@@ -93,11 +93,37 @@ class Robot:
         self.drive_power = np.zeros(4)
         self.arm_power = 0.0
         self._encoder_zero = np.zeros(4)
+        self.heading_target = None      # latched heading for drive_held()
 
     # -- outputs ---------------------------------------------------------
 
     def drive(self, fwd, strafe, turn):
         self.drive_power = mecanum(fwd, strafe, turn)
+
+    def drive_held(self, fwd, strafe, turn, kp=2.5, deadband=0.05):
+        """Drive with gyro heading-hold: the robot keeps the heading you left
+        it on until you actively command a turn.
+
+        Mecanum robots drift in yaw while strafing, because lateral load
+        transfer unloads the wheels unevenly and the roller contact patches
+        aren't perfectly matched. It gets worse the higher the centre of
+        gravity -- measured here, raising the arm pivot 130 mm took strafe yaw
+        from under a degree to as much as 20 over two seconds.
+
+        The fix real teams use is exactly this: latch the heading whenever the
+        turn stick is idle, and feed the error back as a turn command. It is
+        also what makes long autonomous strafes repeatable.
+        """
+        if abs(turn) > deadband:
+            self.heading_target = None          # driver is steering; let them
+            self.drive_power = mecanum(fwd, strafe, turn)
+            return
+
+        h = self.heading()
+        if self.heading_target is None:
+            self.heading_target = h
+        err = (self.heading_target - h + np.pi) % (2 * np.pi) - np.pi
+        self.drive_power = mecanum(fwd, strafe, float(np.clip(-kp * err, -1, 1)))
 
     def set_arm(self, power):
         self.arm_power = float(np.clip(power, -1, 1))
