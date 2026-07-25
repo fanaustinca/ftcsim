@@ -38,6 +38,7 @@ import pygame
 
 from robot import build_mjcf
 from motors import Robot
+from version import describe
 
 WIN_W, WIN_H = 1180, 740
 DEADZONE = 0.08
@@ -59,7 +60,7 @@ def deadzone(v):
 class Sim:
     def __init__(self):
         pygame.init()
-        pygame.display.set_caption("ftcsim - teleop")
+        pygame.display.set_caption(f"ftcsim {describe(with_git=False)} - teleop")
         self.screen = pygame.display.set_mode((WIN_W, WIN_H))
         self.font = pygame.font.SysFont("monospace", 15)
         self.big = pygame.font.SysFont("monospace", 19, bold=True)
@@ -92,6 +93,8 @@ class Sim:
         self.manual_arm = False
         self.running = True
         self.fps = 0.0
+        # Resolved once: git_suffix() shells out, and we draw every frame.
+        self.version = describe()
 
     # -- input ----------------------------------------------------------
 
@@ -268,6 +271,14 @@ class Sim:
         self.screen.blit(bg, (14, WIN_H - 44))
         self.screen.blit(surf, (26, WIN_H - 37))
 
+        # Version, bottom-right. Dimmed so it never competes with the telemetry,
+        # but always present so anyone can say which build they're looking at.
+        vs = self.font.render(self.version, True, (130, 136, 148))
+        vbg = pygame.Surface((vs.get_width() + 22, 30), pygame.SRCALPHA)
+        vbg.fill((12, 14, 18, 195))
+        self.screen.blit(vbg, (WIN_W - vs.get_width() - 36, WIN_H - 44))
+        self.screen.blit(vs, (WIN_W - vs.get_width() - 25, WIN_H - 37))
+
     # -- main loop ------------------------------------------------------
 
     def run(self):
@@ -305,6 +316,6 @@ class Sim:
 
 
 if __name__ == "__main__":
-    print("ftcsim teleop - single window, all input owned by us.")
+    print(f"ftcsim {describe()} - teleop")
     print("WASD drive, QE turn, RF arm, SPACE claw, G field-centric, TAB camera.")
     Sim().run()

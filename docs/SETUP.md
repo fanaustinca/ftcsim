@@ -41,6 +41,21 @@ Everything runs through `./.venv/bin/python`. You never need to "activate" the
 venv, and using plain `python3` will fail with import errors — that's the most
 common setup mistake.
 
+## Which version am I on?
+
+```bash
+./.venv/bin/python version.py
+```
+
+```
+v0.9.0+d6c7f37
+```
+
+Release, then the git commit. A `-dirty` suffix means you have uncommitted
+local edits. The same string sits in the bottom-right corner of the teleop
+window, so you can always tell what you're looking at. Quote it if you report a
+problem.
+
 ## Check it works
 
 ```bash

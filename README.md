@@ -5,6 +5,11 @@ A 3D physics simulator for FIRST Tech Challenge robots, built on
 respects the torque–speed curve, gamepad or keyboard teleop, and an import path
 from Onshape CAD.
 
+**v0.9.0** — see [CHANGELOG.md](CHANGELOG.md). The running version is shown in
+the bottom-right of the teleop window and by `python version.py`; it includes
+the git hash, so `v0.9.0+d6c7f37-dirty` means release 0.9.0 at commit d6c7f37
+with uncommitted local edits.
+
 Built as a learning project. It is not affiliated with *FIRST* or goBILDA.
 
 ![robot](docs/robot.png)
