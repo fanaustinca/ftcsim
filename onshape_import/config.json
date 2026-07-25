@@ -1,0 +1,20 @@
+{
+  "url": "PASTE_YOUR_ONSHAPE_ASSEMBLY_URL_HERE",
+  "output_format": "mujoco",
+  "robot_name": "ftc_robot",
+  "output_filename": "robot",
+  "assets_directory": "assets",
+
+  "draw_frames": false,
+  "no_dynamics": false,
+  "round_decimals": 6,
+
+  "joint_properties": {
+    "default": {
+      "damping": 0.05,
+      "friction": 0.0
+    }
+  },
+
+  "ignore": []
+}

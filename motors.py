@@ -1,0 +1,189 @@
+"""Motor model + a robot API that looks roughly like the FTC SDK.
+
+The important part is `Motor.torque()`. A real DC motor cannot produce stall
+torque at full speed -- as it spins up, back-EMF eats the available torque
+until, at free speed, it produces none at all. MuJoCo's `motor` actuator has no
+such limit: ask for 3 N*m and it gives you 3 N*m at 8000 RPM, which is how you
+end up with a sim that says every mechanism works.
+
+The model is the standard linear one:
+
+    T = T_stall * (power - omega / omega_free)
+
+At power=1, omega=0 you get stall torque. At power=1, omega=omega_free you get
+zero. At power=0 with the motor still spinning you get negative torque, which is
+the braking you feel when you release the sticks with ZeroPowerBehavior.BRAKE.
+"""
+
+from dataclasses import dataclass
+
+import mujoco
+import numpy as np
+
+
+@dataclass(frozen=True)
+class Motor:
+    """Specs are at the OUTPUT shaft, i.e. after the gearbox.
+
+    Numbers below are ballpark goBILDA 5203 Yellow Jacket figures. Check them
+    against the actual product page before trusting a result -- the whole point
+    of this model is using real numbers.
+    """
+    name: str
+    free_rpm: float
+    stall_nm: float
+    ticks_per_rev: float
+    efficiency: float = 0.85
+
+    @property
+    def free_rads(self) -> float:
+        return self.free_rpm * 2 * np.pi / 60.0
+
+    def torque(self, power: float, omega: float) -> float:
+        power = float(np.clip(power, -1.0, 1.0))
+        t = self.stall_nm * (power - omega / self.free_rads)
+        # A motor can't produce more than stall torque in either direction.
+        t = float(np.clip(t, -self.stall_nm, self.stall_nm))
+        return t * self.efficiency
+
+
+# 19.2:1, the standard FTC drivetrain choice.
+YJ_312 = Motor("goBILDA 5203 312rpm", free_rpm=312, stall_nm=2.4, ticks_per_rev=537.7)
+# 99.5:1, geared way down for arms -- slow and strong.
+YJ_60 = Motor("goBILDA 5203 60rpm", free_rpm=60, stall_nm=7.5, ticks_per_rev=2786.2)
+
+WHEELS = ["fl", "fr", "bl", "br"]
+
+
+def mecanum(fwd: float, strafe: float, turn: float) -> np.ndarray:
+    """Mix driver inputs into four wheel powers, normalising so nothing clips.
+
+    Sign conventions match the standard FTC teleop snippet, so this maps
+    straight onto gamepad axes with no negation:
+        fwd    +1 = forward
+        strafe +1 = right   (gamepad1.left_stick_x)
+        turn   +1 = clockwise / right  (gamepad1.right_stick_x)
+
+    Scaling by the max magnitude (rather than clipping each wheel) keeps the
+    ratios between wheels intact, so the robot still travels in the commanded
+    direction at full stick instead of curving.
+    """
+    p = np.array([
+        fwd + strafe + turn,   # fl
+        fwd - strafe - turn,   # fr
+        fwd - strafe + turn,   # bl
+        fwd + strafe - turn,   # br
+    ])
+    peak = np.abs(p).max()
+    return p / peak if peak > 1.0 else p
+
+
+class Robot:
+    """Thin wrapper over MjModel/MjData exposing FTC-shaped controls."""
+
+    def __init__(self, model, data, battery_v: float = 12.5):
+        self.m, self.d = model, data
+        self.battery_v = battery_v
+
+        self._drive_j = [model.joint(f"drive_{w}").id for w in WHEELS]
+        self._drive_dof = [model.jnt_dofadr[j] for j in self._drive_j]
+        self._shoulder_j = model.joint("shoulder").id
+        self._shoulder_dof = model.jnt_dofadr[self._shoulder_j]
+
+        self.drive_power = np.zeros(4)
+        self.arm_power = 0.0
+        self._encoder_zero = np.zeros(4)
+
+    # -- outputs ---------------------------------------------------------
+
+    def drive(self, fwd, strafe, turn):
+        self.drive_power = mecanum(fwd, strafe, turn)
+
+    def set_arm(self, power):
+        self.arm_power = float(np.clip(power, -1, 1))
+
+    def hold_arm(self, target_rad, kp=4.0, kd=0.4, kf=0.30):
+        """PD position hold with gravity feedforward.
+
+        At zero power a real motor only brakes -- it does not hold position, so
+        an uncommanded arm falls. Every FTC team writes some version of this.
+
+        The kf term is the interesting part: gravity's torque on the arm scales
+        with cos(angle), maximum when the arm is straight out horizontal and zero
+        when it points straight up. Feeding that forward means the PD terms only
+        have to correct the leftovers, so the arm doesn't sag under its own
+        weight before the error term catches up.
+        """
+        theta = float(self.d.joint("shoulder").qpos[0])
+        omega = float(self.d.qvel[self._shoulder_dof])
+        ff = kf * np.cos(theta)
+        self.arm_power = float(np.clip(kp * (target_rad - theta) - kd * omega + ff, -1, 1))
+
+    def stow(self, shoulder=1.2):
+        """Put the arm in a raised starting pose instead of letting it flop."""
+        self.d.qpos[self.m.jnt_qposadr[self._shoulder_j]] = shoulder
+        mujoco.mj_forward(self.m, self.d)
+
+    def set_wrist(self, angle):
+        self.d.ctrl[self.m.actuator("s_wrist").id] = float(np.clip(angle, -1.7, 1.7))
+
+    def level_wrist(self, offset=0.0):
+        """Keep the claw horizontal regardless of how the shoulder is angled.
+
+        Without this the claw tilts with the arm and drives its fingertips into
+        the floor when you reach down for something. Real robots fix this either
+        with a parallel-bar linkage or, as here, a wrist servo that tracks the
+        shoulder. The shoulder turns about -Y and the wrist about +Y, so the two
+        cancel when their angles are equal.
+        """
+        theta = float(self.d.joint("shoulder").qpos[0])
+        self.set_wrist(theta + offset)
+
+    def set_grip(self, closed):
+        """closed: 0.0 = wide open, 1.0 = fully closed.
+
+        Positive grip_l swings the left finger outward (its tip moves to +y),
+        so OPEN is the positive end for the left finger and the negative end for
+        the right one. Getting this backwards silently inverts the claw.
+        """
+        c = float(np.clip(closed, 0, 1))
+        self.d.ctrl[self.m.actuator("s_grip_l").id] = 0.40 - c * 0.75
+        self.d.ctrl[self.m.actuator("s_grip_r").id] = -0.40 + c * 0.75
+
+    # -- inputs ----------------------------------------------------------
+
+    def encoders(self):
+        """Wheel positions in encoder ticks, like getCurrentPosition()."""
+        pos = np.array([self.d.qpos[self.m.jnt_qposadr[j]] for j in self._drive_j])
+        return ((pos / (2 * np.pi)) * YJ_312.ticks_per_rev - self._encoder_zero).astype(int)
+
+    def reset_encoders(self):
+        pos = np.array([self.d.qpos[self.m.jnt_qposadr[j]] for j in self._drive_j])
+        self._encoder_zero = (pos / (2 * np.pi)) * YJ_312.ticks_per_rev
+
+    def heading(self):
+        """Robot yaw in radians, like the IMU's getRobotYawPitchRollAngles()."""
+        q = self.d.body("chassis").xquat
+        return float(np.arctan2(2 * (q[0] * q[3] + q[1] * q[2]),
+                                1 - 2 * (q[2] ** 2 + q[3] ** 2)))
+
+    def pose(self):
+        p = self.d.body("chassis").xpos
+        return float(p[0]), float(p[1]), self.heading()
+
+    # -- called every physics step --------------------------------------
+
+    def apply(self):
+        """Convert power commands into torques using the motor curve.
+
+        Call this immediately before every mj_step.
+        """
+        sag = self.battery_v / 12.5   # crude, but catches "everything slows under load"
+
+        for i in range(4):
+            omega = self.d.qvel[self._drive_dof[i]]
+            tau = YJ_312.torque(self.drive_power[i], omega) * sag
+            self.d.ctrl[self.m.actuator(f"m_{WHEELS[i]}").id] = tau
+
+        omega = self.d.qvel[self._shoulder_dof]
+        self.d.ctrl[self.m.actuator("m_shoulder").id] = YJ_60.torque(self.arm_power, omega) * sag

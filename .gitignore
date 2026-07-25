@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+
+# rendered output
+*.mp4
+*.png
+!docs/*.png
+
+# onshape import artefacts
+onshape_import/robot.xml
+onshape_import/assets/
+onshape_import/.cache/
