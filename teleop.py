@@ -263,21 +263,34 @@ class Sim:
             self.screen.blit(font.render(text, True, colour), (26, yy))
             yy += 21
 
-        hint = ("WASD drive  QE turn  RF arm  SPACE claw  G field  H hold  |  "
-                "L-drag orbit  R-drag pan  scroll zoom  TAB cam  HOME recentre")
-        surf = self.font.render(hint, True, (150, 156, 166))
-        bg = pygame.Surface((surf.get_width() + 24, 30), pygame.SRCALPHA)
-        bg.fill((12, 14, 18, 195))
-        self.screen.blit(bg, (14, WIN_H - 44))
-        self.screen.blit(surf, (26, WIN_H - 37))
-
-        # Version, bottom-right. Dimmed so it never competes with the telemetry,
-        # but always present so anyone can say which build they're looking at.
+        # Version box first, bottom-right. Dimmed so it never competes with the
+        # telemetry, but always present so anyone can say which build they're
+        # looking at.
         vs = self.font.render(self.version, True, (130, 136, 148))
-        vbg = pygame.Surface((vs.get_width() + 22, 30), pygame.SRCALPHA)
+        vbox_w = vs.get_width() + 22
+        vbox_x = WIN_W - vbox_w - 14
+        vbg = pygame.Surface((vbox_w, 30), pygame.SRCALPHA)
         vbg.fill((12, 14, 18, 195))
-        self.screen.blit(vbg, (WIN_W - vs.get_width() - 36, WIN_H - 44))
-        self.screen.blit(vs, (WIN_W - vs.get_width() - 25, WIN_H - 37))
+        self.screen.blit(vbg, (vbox_x, WIN_H - 44))
+        self.screen.blit(vs, (vbox_x + 11, WIN_H - 37))
+
+        # Controls hint, trimmed so it can never run under the version box.
+        # Dropping hints from the end beats overlapping text, which is what
+        # happened when both were drawn at fixed positions.
+        parts = ["WASD drive", "QE turn", "RF arm", "SPACE claw", "G field",
+                 "H hold", "|", "L-drag orbit", "R-drag pan", "scroll zoom",
+                 "TAB cam", "HOME recentre"]
+        budget = vbox_x - 14 - 30          # leave a gap before the version box
+        while parts:
+            surf = self.font.render("  ".join(parts), True, (150, 156, 166))
+            if surf.get_width() + 24 <= budget:
+                break
+            parts.pop()
+        if parts:
+            bg = pygame.Surface((surf.get_width() + 24, 30), pygame.SRCALPHA)
+            bg.fill((12, 14, 18, 195))
+            self.screen.blit(bg, (14, WIN_H - 44))
+            self.screen.blit(surf, (26, WIN_H - 37))
 
     # -- main loop ------------------------------------------------------
 

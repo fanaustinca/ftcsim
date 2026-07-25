@@ -13,6 +13,12 @@ local edits."
 
 ---
 
+## 0.9.1
+
+- Fixed the version string overlapping the controls hint at the bottom of the
+  teleop window. The hint now trims itself from the end to fit the space left
+  by the version box, rather than both drawing at fixed positions
+
 ## 0.9.0
 
 Version tracking.
