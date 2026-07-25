@@ -143,7 +143,7 @@ def rollers_xml(preset, hand, wheel_name):
                 fromto="{a[0]:.5f} {a[1]:.5f} {a[2]:.5f} {b[0]:.5f} {b[1]:.5f} {b[2]:.5f}"
                 mass="{roller_mass:.5f}"
                 friction="{preset.roller_friction} 0.005 0.0001"
-                contype="2" conaffinity="1" rgba="0.85 0.85 0.88 1"/>
+                contype="2" conaffinity="1" rgba="0.16 0.16 0.18 1"/>
         </body>""")
     return "".join(out)
 
@@ -161,7 +161,7 @@ def wheel_xml(preset, name, x, y, z, hand):
         <joint name="drive_{name}" type="hinge" axis="1 0 0" damping="0.002" limited="false"/>
         <geom name="hub_{name}" type="cylinder"
               size="{hub_r:.5f} {preset.half_width:.5f}" euler="0 1.5708 0"
-              mass="{hub_mass:.5f}" contype="0" conaffinity="0" rgba="0.25 0.25 0.3 1"/>
+              mass="{hub_mass:.5f}" contype="0" conaffinity="0" group="1" rgba="0.58 0.60 0.64 1"/>
         {rollers_xml(preset, hand, name)}
       </body>"""
 

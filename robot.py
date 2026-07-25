@@ -11,6 +11,7 @@ Everything is SI units: meters, kilograms, seconds, radians.
 
 import numpy as np
 
+import structure as st
 import wheels
 
 # ---------------------------------------------------------------------------
@@ -71,8 +72,36 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0):
             friction="0.9 0.01 0.001" rgba="0.75 0.25 0.30 1"/>
     </body>"""
 
+    # --- structure -------------------------------------------------------
+    rail_y = CHASSIS_W / 2 - st.CHANNEL_W / 2
+    rail_x = CHASSIS_L / 2 - st.CHANNEL_W / 2
+    frame_z = -CHASSIS_H / 2 + st.CHANNEL_H / 2
+
+    frame = "\n        ".join([
+        st.u_channel("rail_l", CHASSIS_L, (0, +rail_y, frame_z), axis="x"),
+        st.u_channel("rail_r", CHASSIS_L, (0, -rail_y, frame_z), axis="x"),
+        st.u_channel("cross_f", CHASSIS_W - st.CHANNEL_W * 2, (+rail_x, 0, frame_z), axis="y"),
+        st.u_channel("cross_b", CHASSIS_W - st.CHANNEL_W * 2, (-rail_x, 0, frame_z), axis="y"),
+    ])
+
+    deck = st.plate("deck", CHASSIS_L, CHASSIS_W, (0, 0, CHASSIS_H / 2))
+
+    motors = "\n        ".join(
+        st.motor(f"motor_{n}", (x, y * 0.72, frame_z), euler="1.5708 0 0")
+        for n, x, y, _ in WHEELS)
+
+    electronics = "\n        ".join([
+        st.box_part("control_hub", (0.145, 0.095, 0.030), (-0.03, 0.0, frame_z + 0.030),
+                    density=900, rgba="0.15 0.16 0.19 1"),
+        st.box_part("battery", (0.135, 0.048, 0.042), (0.075, 0.0, frame_z + 0.032),
+                    density=2300, rgba="0.85 0.72 0.15 1"),
+    ])
+
     wheel_z = -CHASSIS_H / 2
     chassis_z = preset.radius + CHASSIS_H / 2 + 0.002
+    arm_structure = st.u_channel("arm_ch", ARM_LEN, (ARM_LEN / 2, 0, 0), axis="x",
+                                 rgba="0.70 0.72 0.76 1")
+
     wheels_xml = "".join(
         wheels.wheel_xml(preset, n, x, y, wheel_z, h) for n, x, y, h in WHEELS)
     half = FIELD_SIZE / 2
@@ -127,9 +156,22 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0):
 
     <body name="chassis" pos="0 0 {chassis_z:.5f}">
       <freejoint/>
-      <geom name="chassisg" type="box" size="{CHASSIS_L/2} {CHASSIS_W/2} {CHASSIS_H/2}"
-            mass="{CHASSIS_MASS}" contype="2" conaffinity="1" rgba="0.20 0.42 0.75 1"/>
-      <site name="imu" pos="0 0 0" size="0.01"/>
+
+      <!-- Frame: two side channels running fore-aft, two cross channels.
+           Mass is INTEGRATED FROM GEOMETRY at aluminium density, not assigned. -->
+      {frame}
+
+      <!-- Polycarbonate deck -->
+      {deck}
+
+      <!-- Drivetrain motors, mounted inboard of each wheel -->
+      {motors}
+
+      <!-- REV Control Hub and the 12V battery: both real, both heavy enough
+           to matter, and both sitting low where they belong. -->
+      {electronics}
+
+      <site name="imu" pos="0 0 0" size="0.01" group="4"/>
       {wheels_xml}
 
       <!-- Arm: shoulder pivot at the back, wrist at the far end, 2-finger claw.
@@ -139,24 +181,23 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0):
              anyone reading the code will assume. Lower limit reaches the floor
              out front; upper limit tucks it back over the chassis. -->
         <joint name="shoulder" type="hinge" axis="0 -1 0" range="-0.45 2.00" damping="0.6"/>
-        <geom name="armg" type="capsule" size="0.022" fromto="0 0 0 {ARM_LEN} 0 0"
-              mass="1.1" contype="2" conaffinity="1" rgba="0.75 0.78 0.82 1"/>
+        {arm_structure}
 
         <body name="wrist" pos="{ARM_LEN} 0 0">
           <joint name="wrist" type="hinge" axis="0 1 0" range="-1.7 1.7" damping="0.12"/>
-          <geom name="wristg" type="box" size="0.028 0.045 0.014" mass="0.18"
+          <geom name="wristg" type="box" size="0.028 0.045 0.014" density="1300"
                 contype="2" conaffinity="1" rgba="0.55 0.58 0.62 1"/>
 
           <body name="finger_l" pos="0.026 0.055 0">
             <joint name="grip_l" type="hinge" axis="0 0 1" range="-0.40 0.40" damping="0.05"/>
             <geom name="finger_lg" type="capsule" size="0.008"
-                  fromto="0 0 0 {FINGER_LEN} 0 0" mass="0.05"
+                  fromto="0 0 0 {FINGER_LEN} 0 0" density="1300"
                   contype="2" conaffinity="1" friction="3.5 0.05 0.005" rgba="0.90 0.35 0.30 1"/>
           </body>
           <body name="finger_r" pos="0.026 -0.055 0">
             <joint name="grip_r" type="hinge" axis="0 0 1" range="-0.40 0.40" damping="0.05"/>
             <geom name="finger_rg" type="capsule" size="0.008"
-                  fromto="0 0 0 {FINGER_LEN} 0 0" mass="0.05"
+                  fromto="0 0 0 {FINGER_LEN} 0 0" density="1300"
                   contype="2" conaffinity="1" friction="3.5 0.05 0.005" rgba="0.90 0.35 0.30 1"/>
           </body>
         </body>

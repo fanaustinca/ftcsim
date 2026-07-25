@@ -15,6 +15,9 @@ Honest state of things, so you know what you're getting:
 
 | Feature | State |
 |---|---|
+| Robot built from real aluminium channel + polycarbonate | **Working** |
+| Mass computed from geometry x material density | **Working** |
+| Arm torque / payload analysis | **Working** |
 | Mecanum drivetrain (40 hinged rollers) | **Working**, validated |
 | Motor torque–speed model, encoders, IMU | **Working** |
 | Arm with gravity-feedforward hold | **Working** |
@@ -83,6 +86,45 @@ strafe right       0.01   -1.59     0.0    0.79        31.7
 
 Strafing is pure sideways to within 0.1° of yaw. Peak wheel speed pins at free
 speed (32.7 rad/s) instead of running away.
+
+### What does it weigh, and can the motors move it?
+
+```bash
+./.venv/bin/python mass_report.py
+```
+
+Nothing here is a typed-in number. The robot is built from goBILDA-style
+aluminium U-channel and polycarbonate plate at their real densities, and MuJoCo
+integrates the geometry:
+
+```
+  chassis + electronics        3.658 kg   65.8%
+  wheels                       1.400 kg   25.2%
+  arm assembly                 0.506 kg    9.1%
+  TOTAL                        5.564 kg
+
+  arm assembly mass         0.506 kg
+  centre of gravity         265.4 mm from the shoulder pivot
+  holding torque at horizontal: 1.316 N*m
+
+  motor                           stall    margin  verdict
+  goBILDA 60 RPM (99.5:1)         6.38N*m      4.8x  comfortable
+  goBILDA 312 RPM (19.2:1)        2.04N*m      1.5x  workable, run a hold PID
+```
+
+The gravity torque comes from MuJoCo's own `qfrc_bias`, and it agrees with the
+hand calculation m*g*r to three decimals. Change `ARM_LEN` in `robot.py` and
+every number above moves with it — which is the entire point.
+
+A U-channel is modelled as three thin boxes, not a solid block: a solid box of
+the same envelope weighs roughly four times what the real extrusion does, and
+that error would propagate straight into every torque result.
+
+**Caveats.** This models frame, deck, motors, wheels, hub and battery only — a
+real robot adds brackets, fasteners, wiring and mechanism hardware, so expect
+the physical thing to land 2-3x heavier. Pattern holes aren't modelled, which
+pushes ~10-15% the other way. Treat computed masses as good to about 15%. Weigh
+a real part and adjust the density if you want better.
 
 ### Compare wheels
 
@@ -171,6 +213,8 @@ works unchanged.
 ```
 robot.py       generates the MJCF model (field, chassis, arm) from Python
 wheels.py      mecanum presets + the roller/wheel MJCF generator
+structure.py   material densities + U-channel/plate/motor part builders
+mass_report.py mass budget, arm CG, holding torque, payload capacity
 motors.py      torque-speed motor model + an FTC-shaped robot API
 teleop.py      gamepad / keyboard driving
 wheel_swap.py  detect and replace CAD wheels in an imported model
