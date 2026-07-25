@@ -5,7 +5,7 @@ A 3D physics simulator for FIRST Tech Challenge robots, built on
 respects the torque–speed curve, gamepad or keyboard teleop, and an import path
 from Onshape CAD.
 
-**v0.10.0** — see [CHANGELOG.md](CHANGELOG.md). The running version is shown in
+**v0.11.0** — see [CHANGELOG.md](CHANGELOG.md). The running version is shown in
 the bottom-right of the teleop window and by `python version.py`; it includes
 the git hash, so `v0.9.0+d6c7f37-dirty` means release 0.9.0 at commit d6c7f37
 with uncommitted local edits.
@@ -168,6 +168,30 @@ a pushing match, where grip is the binding constraint.
 ./.venv/bin/python teleop_showcase.py   # scripted driving -> teleop_demo.mp4
 ./.venv/bin/python auto_demo.py         # scripted autonomous -> demo.mp4
 ```
+
+## Configuring the robot
+
+Like the Driver Hub's configuration screen: which motor is on which port, what
+it's called, and whether it's reversed.
+
+```bash
+./.venv/bin/python configure.py                  # interactive
+./.venv/bin/python configure.py --auto           # guess it
+./.venv/bin/python configure.py imported.xml -o my.json
+./.venv/bin/python teleop.py --config my.json
+```
+
+This is what makes a CAD import usable. After export your joints are named
+after your Onshape mates, so a config maps `wheel_FL_hinge_v2` onto "front left
+drive motor" without renaming anything.
+
+Drivetrains: 4-wheel mecanum, 4- and 6-wheel tank, 2-wheel tank. Tank layouts
+ignore sideways input, the same as the real thing.
+
+**Reversal is measured, not guessed.** `--auto` drives each motor on its own and
+watches which way the robot goes. The usual heuristic — "right-side motors are
+reversed" — is true on real hardware and false on a model whose joints share an
+axis, so guessing it would break the built-in robot.
 
 ## Wheel presets
 

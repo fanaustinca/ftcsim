@@ -27,6 +27,7 @@ WHY THERE IS NO MUJOCO VIEWER WINDOW
     pygame window, and we own every key and mouse event. The camera controls
     below are ours too. Costs a few frames per second; worth it.
 """
+import argparse
 import os
 
 os.environ.setdefault("MUJOCO_GL", "egl")
@@ -40,6 +41,7 @@ import pygame
 from robot import build_mjcf
 from motors import Robot
 from version import describe
+import robotconfig as rc
 
 WIN_W, WIN_H = 1180, 740
 DEADZONE = 0.08
@@ -59,7 +61,7 @@ def deadzone(v):
 
 
 class Sim:
-    def __init__(self):
+    def __init__(self, config=None):
         pygame.init()
         pygame.display.set_caption(f"ftcsim {describe(with_git=False)} - teleop")
         self.screen = pygame.display.set_mode((WIN_W, WIN_H))
@@ -72,9 +74,11 @@ class Sim:
             self.js = pygame.joystick.Joystick(0)
             self.js.init()
 
-        self.model = mujoco.MjModel.from_xml_string(build_mjcf(quality="fast"))
+        self.config = config or rc.default_config()
+        self.model = mujoco.MjModel.from_xml_string(
+            build_mjcf(wheel_preset=self.config.wheel_preset, quality="fast"))
         self.data = mujoco.MjData(self.model)
-        self.bot = Robot(self.model, self.data)
+        self.bot = Robot(self.model, self.data, config=self.config)
         self.bot.stow()
 
         self.renderer = mujoco.Renderer(self.model, height=WIN_H, width=WIN_W)
@@ -262,7 +266,7 @@ class Sim:
     def hud(self, cam_name):
         x, y, h = self.bot.pose()
         arm = float(self.data.joint("shoulder").qpos[0])
-        panel = pygame.Surface((252, 230), pygame.SRCALPHA)
+        panel = pygame.Surface((252, 252), pygame.SRCALPHA)
         panel.fill((12, 14, 18, 195))
         self.screen.blit(panel, (14, 14))
 
@@ -278,6 +282,7 @@ class Sim:
              (255, 165, 60) if self.grip > 0.5 else (222, 226, 232)),
             (self.font, f"hold     {'ON' if self.heading_hold else 'off'}",
              (110, 220, 140) if self.heading_hold else (150, 155, 165)),
+            (self.font, f"drive    {self.config.drivetrain}", (150, 155, 165)),
             (self.font, f"camera   {cam_name}"
                         f"{'  (panned)' if np.linalg.norm(self.pan) > 0.01 else ''}",
              (255, 200, 110) if np.linalg.norm(self.pan) > 0.01 else (150, 155, 165)),
@@ -355,6 +360,14 @@ class Sim:
 
 
 if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config", help="robot_config.json from configure.py")
+    args = ap.parse_args()
+
+    cfg = rc.RobotConfig.load(args.config) if args.config else None
     print(f"ftcsim {describe()} - teleop")
-    print("WASD drive, QE turn, RF arm, SPACE claw, G field-centric, TAB camera.")
-    Sim().run()
+    if cfg:
+        print(f"config: {args.config}\n")
+        print(cfg.summary())
+    print("\nWASD drive  QE turn  RF arm  ZX claw tilt  SPACE claw  1 grab  2 stow")
+    Sim(config=cfg).run()

@@ -20,6 +20,8 @@ from dataclasses import dataclass, replace
 import mujoco
 import numpy as np
 
+import robotconfig as rc
+
 
 @dataclass(frozen=True)
 class Motor:
@@ -116,24 +118,50 @@ def mecanum(fwd: float, strafe: float, turn: float) -> np.ndarray:
 class Robot:
     """Thin wrapper over MjModel/MjData exposing FTC-shaped controls."""
 
-    def __init__(self, model, data, battery_v: float = 12.5):
+    def __init__(self, model, data, battery_v: float = 12.5, config=None):
+        """config: a RobotConfig, or None for the built-in mecanum layout.
+
+        The config is what lets an imported robot work: after a CAD export the
+        joints are named after your Onshape mates, so the mapping from "front
+        left drive motor" to an actual joint has to come from somewhere.
+        """
         self.m, self.d = model, data
         self.battery_v = battery_v
+        self.config = config or rc.default_config()
 
-        self._drive_j = [model.joint(f"drive_{w}").id for w in WHEELS]
+        self._motor_specs = {"YJ_312": YJ_312, "YJ_60": YJ_60}
+
+        self._drive_j = [model.joint(self.config.drive[p].joint).id
+                         for p in self.config.positions]
         self._drive_dof = [model.jnt_dofadr[j] for j in self._drive_j]
-        self._shoulder_j = model.joint("shoulder").id
-        self._shoulder_dof = model.jnt_dofadr[self._shoulder_j]
+        self._drive_specs = [self._motor_specs.get(self.config.drive[p].motor_type, YJ_312)
+                             for p in self.config.positions]
+        self._drive_actuators = [self._actuator_for(self.config.drive[p].joint)
+                                 for p in self.config.positions]
 
-        self.drive_power = np.zeros(4)
+        arm = self.config.mechanisms.get("arm")
+        self._shoulder_j = model.joint(arm.joint if arm else "shoulder").id
+        self._shoulder_dof = model.jnt_dofadr[self._shoulder_j]
+        self._arm_spec = (self._motor_specs.get(arm.motor_type, YJ_60) if arm else YJ_60)
+        self._arm_actuator = self._actuator_for(arm.joint if arm else "shoulder")
+
+        self.drive_power = np.zeros(len(self._drive_j))
         self.arm_power = 0.0
-        self._encoder_zero = np.zeros(4)
+        self._encoder_zero = np.zeros(len(self._drive_j))
         self.heading_target = None      # latched heading for drive_held()
+
+    def _actuator_for(self, joint_name):
+        """Find the actuator driving a joint, whatever it happens to be called."""
+        jid = self.m.joint(joint_name).id
+        for a in range(self.m.nu):
+            if self.m.actuator_trnid[a][0] == jid:
+                return a
+        raise KeyError(f"no actuator drives joint {joint_name!r}")
 
     # -- outputs ---------------------------------------------------------
 
     def drive(self, fwd, strafe, turn):
-        self.drive_power = mecanum(fwd, strafe, turn)
+        self.drive_power = self.config.mix(fwd, strafe, turn)
 
     def drive_held(self, fwd, strafe, turn, kp=2.5, deadband=0.05):
         """Drive with gyro heading-hold: the robot keeps the heading you left
@@ -151,14 +179,14 @@ class Robot:
         """
         if abs(turn) > deadband:
             self.heading_target = None          # driver is steering; let them
-            self.drive_power = mecanum(fwd, strafe, turn)
+            self.drive_power = self.config.mix(fwd, strafe, turn)
             return
 
         h = self.heading()
         if self.heading_target is None:
             self.heading_target = h
         err = (self.heading_target - h + np.pi) % (2 * np.pi) - np.pi
-        self.drive_power = mecanum(fwd, strafe, float(np.clip(-kp * err, -1, 1)))
+        self.drive_power = self.config.mix(fwd, strafe, float(np.clip(-kp * err, -1, 1)))
 
     def set_arm(self, power):
         self.arm_power = float(np.clip(power, -1, 1))
@@ -216,11 +244,13 @@ class Robot:
     def encoders(self):
         """Wheel positions in encoder ticks, like getCurrentPosition()."""
         pos = np.array([self.d.qpos[self.m.jnt_qposadr[j]] for j in self._drive_j])
-        return ((pos / (2 * np.pi)) * YJ_312.ticks_per_rev - self._encoder_zero).astype(int)
+        ticks = np.array([s.ticks_per_rev for s in self._drive_specs])
+        return ((pos / (2 * np.pi)) * ticks - self._encoder_zero).astype(int)
 
     def reset_encoders(self):
         pos = np.array([self.d.qpos[self.m.jnt_qposadr[j]] for j in self._drive_j])
-        self._encoder_zero = (pos / (2 * np.pi)) * YJ_312.ticks_per_rev
+        ticks = np.array([s.ticks_per_rev for s in self._drive_specs])
+        self._encoder_zero = (pos / (2 * np.pi)) * ticks
 
     def heading(self):
         """Robot yaw in radians, like the IMU's getRobotYawPitchRollAngles()."""
@@ -241,10 +271,10 @@ class Robot:
         """
         sag = self.battery_v / 12.5   # crude, but catches "everything slows under load"
 
-        for i in range(4):
+        for i in range(len(self._drive_dof)):
             omega = self.d.qvel[self._drive_dof[i]]
-            tau = YJ_312.torque(self.drive_power[i], omega) * sag
-            self.d.ctrl[self.m.actuator(f"m_{WHEELS[i]}").id] = tau
+            tau = self._drive_specs[i].torque(self.drive_power[i], omega) * sag
+            self.d.ctrl[self._drive_actuators[i]] = tau
 
         omega = self.d.qvel[self._shoulder_dof]
-        self.d.ctrl[self.m.actuator("m_shoulder").id] = YJ_60.torque(self.arm_power, omega) * sag
+        self.d.ctrl[self._arm_actuator] = self._arm_spec.torque(self.arm_power, omega) * sag

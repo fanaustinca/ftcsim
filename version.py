@@ -19,7 +19,7 @@ which build they're actually looking at.
 import subprocess
 from pathlib import Path
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 VERSION_INFO = tuple(int(p) for p in __version__.split("."))
 

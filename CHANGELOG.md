@@ -13,6 +13,32 @@ local edits."
 
 ---
 
+## 0.11.0
+
+Robot configuration, the way a Driver Hub does it.
+
+- `configure.py` — interactive wizard: pick a drivetrain, then for each wheel
+  say which hub port it's on, what it's called, and whether it's reversed.
+  `--auto` guesses it all instead of prompting
+- `robotconfig.py` — `RobotConfig` saved as JSON, with validation that catches
+  duplicate ports, duplicate joints, and unfilled drivetrain positions
+- Drivetrains: 4-wheel mecanum, 4- and 6-wheel tank, 2-wheel tank. Tank
+  layouts correctly ignore sideways input, same as the real thing
+- `Robot(model, data, config=...)` maps positions onto whatever the joints are
+  actually called — which is what makes a CAD import usable, since after export
+  the joints are named after your Onshape mates
+- `teleop.py --config robot_config.json`
+- **Motor reversal is measured, not guessed.** `--auto` drives each motor on
+  its own and watches which way the robot goes. Guessing from names ("right
+  side is usually reversed") is right on real hardware and wrong on a model
+  whose joints share an axis — the name-based guess would have reversed the
+  right side and broken the built-in robot
+- Fixed: auto-assign grabbed unrelated joints when a drivetrain needed more
+  wheels than the model had, silently making `shoulder` and `wrist` into drive
+  motors on a 6WD config. It now leaves them unassigned so validation reports it
+- Fixed: ports were indexed by wheel position, so an unmatched wheel left a gap
+  that the mechanism loop then reused, double-booking a port
+
 ## 0.10.0
 
 Claw tilt control — you can now pick the block up by hand, not just in the

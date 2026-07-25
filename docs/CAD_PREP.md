@@ -183,6 +183,19 @@ swap.
     --preset gobilda_104 -o robot_fixed.xml
 ```
 
+### Configure which motor is which
+
+Your exported joints are named after your Onshape mates. Map them onto a
+drivetrain the same way you would on a Driver Hub:
+
+```bash
+./.venv/bin/python configure.py onshape_import/robot.xml -o my_robot.json
+./.venv/bin/python teleop.py --config my_robot.json
+```
+
+`--auto` guesses, then measures each motor's direction by driving it, so you
+don't have to work out which ones need reversing.
+
 ### Gear ratios must be stated by hand
 
 The exporter sees two rotating parts and emits two independent joints. Nothing
