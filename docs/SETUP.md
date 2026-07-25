@@ -87,12 +87,18 @@ A window opens. Click it, then `W`/`A`/`S`/`D`.
 | `A` / `D` | strafe left / right | `G` | field-centric |
 | `Q` / `E` | turn left / right | `H` | gyro heading-hold (default on) |
 | `R` / `F` | arm up / down | `BKSP` | reset |
+| `Z` / `X` | claw tilt down / up | `1` / `2` | grab pose / stow |
 | left-drag | orbit camera | right-drag | pan camera |
 | scroll | zoom | `TAB` | cycle camera |
 | `HOME` | recentre | `ESC` | quit |
 
 Plug in an Xbox-style controller before launching and it works alongside the
 keyboard.
+
+**To pick up the block:** drive up to it, press `1` (drops the arm and points
+the claw at the floor), press `SPACE` to close the claw, then `2` to lift. With
+the claw held level you physically cannot reach a floor object — the wrist
+grounds out on the deck first — so tilt it down with `Z` or use the preset.
 
 ## Everything else
 

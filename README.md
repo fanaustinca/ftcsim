@@ -5,7 +5,7 @@ A 3D physics simulator for FIRST Tech Challenge robots, built on
 respects the torque–speed curve, gamepad or keyboard teleop, and an import path
 from Onshape CAD.
 
-**v0.9.1** — see [CHANGELOG.md](CHANGELOG.md). The running version is shown in
+**v0.10.0** — see [CHANGELOG.md](CHANGELOG.md). The running version is shown in
 the bottom-right of the teleop window and by `python version.py`; it includes
 the git hash, so `v0.9.0+d6c7f37-dirty` means release 0.9.0 at commit d6c7f37
 with uncommitted local edits.
@@ -69,6 +69,7 @@ One window. Everything is ours — keys, mouse, camera.
 | `A` / `D` | strafe left / right | `G` | toggle field-centric |
 | `Q` / `E` | turn left / right | `BKSP` | reset |
 | `R` / `F` | arm up / down | `H` | gyro heading-hold |
+| `Z` / `X` | claw tilt down / up | `1` / `2` | grab pose / stow |
 | | | `ESC` | quit |
 | left-drag | orbit camera | scroll | zoom |
 | **right-drag** | **pan camera** | `HOME` | recentre on robot |

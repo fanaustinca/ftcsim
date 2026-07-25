@@ -13,6 +13,22 @@ local edits."
 
 ---
 
+## 0.10.0
+
+Claw tilt control — you can now pick the block up by hand, not just in the
+scripted routine.
+
+- `Z` / `X` tilt the claw down and up. Teleop previously locked the wrist level
+  (`level_wrist(0.0)`), which made a floor pickup **geometrically impossible**:
+  the wrist block grounds out on the deck with the claw tip at 0.083 m, and the
+  game element's top is at 0.076 m. Tilted down, the arm reaches its joint limit
+  with the tip at 0.006 m instead
+- `1` snaps to the grab pose (arm down, claw pointed at the floor, open) and `2`
+  returns to travel pose. Same measured values `auto_demo.py` uses
+- Claw tilt shown in the HUD
+- Verified end to end by simulating the key presses: drive up, `1`, `SPACE`,
+  `2` — cube lifts to 0.558 m and stays in the claw
+
 ## 0.9.1
 
 - Fixed the version string overlapping the controls hint at the bottom of the

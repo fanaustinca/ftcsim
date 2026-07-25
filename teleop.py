@@ -3,6 +3,7 @@
     python teleop.py
 
     W / S      forward / back          SPACE   toggle claw
+    Z / X      claw tilt down / up     1       snap to grab pose
     A / D      strafe left / right     G       field-centric on/off
     Q / E      turn left / right       BKSP    reset robot
     H          gyro heading-hold
@@ -91,6 +92,13 @@ class Sim:
         self.heading_hold = True
         self.arm_target = 1.2
         self.manual_arm = False
+        # How far the claw is tilted below level. The wrist servo tracks the
+        # shoulder, so 0 keeps the claw horizontal at any arm angle. Level is
+        # right for driving, but you CANNOT pick anything off the floor with it:
+        # the wrist block grounds out on the deck with the claw tip at 0.083 m,
+        # and the game element's top is at 0.076 m. Tilting the claw down lets
+        # the arm run to its joint limit with the tip at floor level instead.
+        self.wrist_offset = 0.0
         self.running = True
         self.fps = 0.0
         # Resolved once: git_suffix() shells out, and we draw every frame.
@@ -116,6 +124,17 @@ class Sim:
                     mujoco.mj_resetData(self.model, self.data)
                     self.bot.stow()
                     self.arm_target, self.grip = 1.2, 0.0
+                elif e.key == pygame.K_1:
+                    # Grab preset: arm down, claw pointed at the floor, open.
+                    # Measured working values, same as auto_demo uses.
+                    self.arm_target = -0.44
+                    self.wrist_offset = 1.45
+                    self.manual_arm = False
+                    self.grip_closed = False
+                elif e.key == pygame.K_2:
+                    self.arm_target = 1.2          # travel / stow pose
+                    self.wrist_offset = 0.0
+                    self.manual_arm = False
                 elif e.key == pygame.K_TAB:
                     self.cam_idx = (self.cam_idx + 1) % len(CAMERAS)
                     _, self.dist, self.el, _ = CAMERAS[self.cam_idx]
@@ -147,6 +166,7 @@ class Sim:
             strafe=axis(pygame.K_d, pygame.K_a),
             turn=axis(pygame.K_e, pygame.K_q),
             arm=axis(pygame.K_r, pygame.K_f),
+            wrist=axis(pygame.K_z, pygame.K_x),
         )
         # Gamepad ADDS to the keyboard rather than replacing it, so an idle or
         # phantom controller can't silently swallow WASD.
@@ -154,7 +174,9 @@ class Sim:
             ax = lambda i: deadzone(self.js.get_axis(i)) if self.js.get_numaxes() > i else 0.0
             lt = (self.js.get_axis(4) + 1) / 2 if self.js.get_numaxes() > 4 else 0.0
             rt = (self.js.get_axis(5) + 1) / 2 if self.js.get_numaxes() > 5 else 0.0
-            for key, v in dict(fwd=-ax(1), strafe=ax(0), turn=ax(3), arm=rt - lt).items():
+            pad = dict(fwd=-ax(1), strafe=ax(0), turn=ax(3), arm=rt - lt)
+            pad["wrist"] = 0.0
+            for key, v in pad.items():
                 if abs(v) > abs(out[key]):
                     out[key] = v
         return out
@@ -206,7 +228,10 @@ class Sim:
                     self.arm_target = float(self.data.joint("shoulder").qpos[0])
                     self.manual_arm = False
                 self.bot.hold_arm(self.arm_target)
-            self.bot.level_wrist(0.0)
+            if abs(s.get("wrist", 0.0)) > 0.05:
+                self.wrist_offset = float(np.clip(
+                    self.wrist_offset + s["wrist"] * 0.012, 0.0, 1.55))
+            self.bot.level_wrist(self.wrist_offset)
 
             self.grip = (min(1.0, self.grip + 0.02) if self.grip_closed
                          else max(0.0, self.grip - 0.02))
@@ -237,7 +262,7 @@ class Sim:
     def hud(self, cam_name):
         x, y, h = self.bot.pose()
         arm = float(self.data.joint("shoulder").qpos[0])
-        panel = pygame.Surface((252, 208), pygame.SRCALPHA)
+        panel = pygame.Surface((252, 230), pygame.SRCALPHA)
         panel.fill((12, 14, 18, 195))
         self.screen.blit(panel, (14, 14))
 
@@ -248,6 +273,7 @@ class Sim:
             (self.font, f"y        {y:+.2f} m", (222, 226, 232)),
             (self.font, f"heading  {np.degrees(h):+7.1f} deg", (222, 226, 232)),
             (self.font, f"arm      {arm:+.2f} rad", (222, 226, 232)),
+            (self.font, f"claw til {self.wrist_offset:+.2f} rad", (222, 226, 232)),
             (self.font, f"claw     {'CLOSED' if self.grip > 0.5 else 'open'}",
              (255, 165, 60) if self.grip > 0.5 else (222, 226, 232)),
             (self.font, f"hold     {'ON' if self.heading_hold else 'off'}",
@@ -277,9 +303,9 @@ class Sim:
         # Controls hint, trimmed so it can never run under the version box.
         # Dropping hints from the end beats overlapping text, which is what
         # happened when both were drawn at fixed positions.
-        parts = ["WASD drive", "QE turn", "RF arm", "SPACE claw", "G field",
-                 "H hold", "|", "L-drag orbit", "R-drag pan", "scroll zoom",
-                 "TAB cam", "HOME recentre"]
+        parts = ["WASD drive", "QE turn", "RF arm", "ZX claw tilt",
+                 "SPACE claw", "1 grab pose", "2 stow", "G field", "H hold",
+                 "|", "L-drag orbit", "R-drag pan", "TAB cam"]
         budget = vbox_x - 14 - 30          # leave a gap before the version box
         while parts:
             surf = self.font.render("  ".join(parts), True, (150, 156, 166))
