@@ -84,21 +84,42 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0):
         st.u_channel("cross_b", CHASSIS_W - st.CHANNEL_W * 2, (-rail_x, 0, frame_z), axis="y"),
     ])
 
-    deck = st.plate("deck", CHASSIS_L, CHASSIS_W, (0, 0, CHASSIS_H / 2))
+    # The deck bolts to the TOP FLANGE of the rails. Previously it was placed at
+    # CHASSIS_H/2 while the rails only reached -CHASSIS_H/2 + CHANNEL_H, leaving
+    # the deck floating 66 mm above the frame with nothing under it.
+    rail_top = -CHASSIS_H / 2 + st.CHANNEL_H
+    deck_z = rail_top + st.PLATE_T / 2
+    deck = st.plate("deck", CHASSIS_L, CHASSIS_W, (0, 0, deck_z))
+    deck_top = deck_z + st.PLATE_T / 2
 
     motors = "\n        ".join(
         st.motor(f"motor_{n}", (x, y * 0.72, frame_z), euler="1.5708 0 0")
         for n, x, y, _ in WHEELS)
 
     electronics = "\n        ".join([
-        st.box_part("control_hub", (0.145, 0.095, 0.030), (-0.03, 0.0, frame_z + 0.030),
+        st.box_part("control_hub", (0.145, 0.095, 0.030), (-0.03, 0.055, deck_top + 0.015),
                     density=900, rgba="0.15 0.16 0.19 1"),
-        st.box_part("battery", (0.135, 0.048, 0.042), (0.075, 0.0, frame_z + 0.032),
+        st.box_part("battery", (0.135, 0.048, 0.042), (-0.03, -0.075, deck_top + 0.021),
                     density=2300, rgba="0.85 0.72 0.15 1"),
     ])
 
     wheel_z = -CHASSIS_H / 2
     chassis_z = preset.radius + CHASSIS_H / 2 + 0.002
+    # Each finger: a flat aluminium plate reaching forward, plus an inward-facing
+    # grip pad at the tip. Two red capsules did not look like anything real.
+    def claw(side, sgn):
+        return "\n            ".join([
+            f'<geom name="finger_{side}_plate" type="box" pos="{FINGER_LEN/2:.4f} 0 0" '
+            f'size="{FINGER_LEN/2:.4f} 0.0035 0.016" density="{st.AL_6061}" '
+            f'contype="2" conaffinity="1" group="2" rgba="0.66 0.68 0.72 1"/>',
+            f'<geom name="finger_{side}_pad" type="box" '
+            f'pos="{FINGER_LEN*0.72:.4f} {-sgn*0.007:.4f} 0" '
+            f'size="{FINGER_LEN*0.30:.4f} 0.004 0.015" density="1100" '
+            f'contype="2" conaffinity="1" group="2" '
+            f'friction="3.5 0.05 0.005" rgba="0.20 0.20 0.22 1"/>',
+        ])
+    claw_l, claw_r = claw("l", +1), claw("r", -1)
+
     arm_structure = st.u_channel("arm_ch", ARM_LEN, (ARM_LEN / 2, 0, 0), axis="x",
                                  rgba="0.70 0.72 0.76 1")
 
@@ -176,7 +197,7 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0):
 
       <!-- Arm: shoulder pivot at the back, wrist at the far end, 2-finger claw.
            Deliberately simple -- this is the "one mechanism that works" shape. -->
-      <body name="arm" pos="{-CHASSIS_L/2 + 0.05} 0 {CHASSIS_H/2}">
+      <body name="arm" pos="{-CHASSIS_L/2 + 0.05} 0 {deck_top + 0.028:.5f}">
         <!-- axis is -Y so that positive angle raises the arm, which is what
              anyone reading the code will assume. Lower limit reaches the floor
              out front; upper limit tucks it back over the chassis. -->
@@ -188,17 +209,18 @@ def build_mjcf(wheel_preset=wheels.DEFAULT, push_block_kg=0.0):
           <geom name="wristg" type="box" size="0.028 0.045 0.014" density="1300"
                 contype="2" conaffinity="1" rgba="0.55 0.58 0.62 1"/>
 
-          <body name="finger_l" pos="0.026 0.055 0">
+          <!-- Servo body, so there is something visibly driving the claw -->
+          <geom name="grip_servo" type="box" pos="0.014 0 0.024" size="0.020 0.011 0.010"
+                density="1400" contype="0" conaffinity="0" group="2"
+                rgba="0.12 0.12 0.14 1"/>
+
+          <body name="finger_l" pos="0.030 0.055 0">
             <joint name="grip_l" type="hinge" axis="0 0 1" range="-0.40 0.40" damping="0.05"/>
-            <geom name="finger_lg" type="capsule" size="0.008"
-                  fromto="0 0 0 {FINGER_LEN} 0 0" density="1300"
-                  contype="2" conaffinity="1" friction="3.5 0.05 0.005" rgba="0.90 0.35 0.30 1"/>
+            {claw_l}
           </body>
-          <body name="finger_r" pos="0.026 -0.055 0">
+          <body name="finger_r" pos="0.030 -0.055 0">
             <joint name="grip_r" type="hinge" axis="0 0 1" range="-0.40 0.40" damping="0.05"/>
-            <geom name="finger_rg" type="capsule" size="0.008"
-                  fromto="0 0 0 {FINGER_LEN} 0 0" density="1300"
-                  contype="2" conaffinity="1" friction="3.5 0.05 0.005" rgba="0.90 0.35 0.30 1"/>
+            {claw_r}
           </body>
         </body>
       </body>

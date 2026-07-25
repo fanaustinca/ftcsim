@@ -31,7 +31,7 @@ from robot import build_mjcf
 from motors import Robot
 
 DEADZONE = 0.08
-PANEL_W, PANEL_H = 460, 260
+PANEL_W, PANEL_H = 460, 296
 
 
 def deadzone(v):
@@ -83,28 +83,47 @@ class Input:
                 elif e.button == 6:
                     self.reset = True
 
-        if self.js:
-            ax = lambda i: deadzone(self.js.get_axis(i)) if self.js.get_numaxes() > i else 0.0
-            lt = (self.js.get_axis(4) + 1) / 2 if self.js.get_numaxes() > 4 else 0.0
-            rt = (self.js.get_axis(5) + 1) / 2 if self.js.get_numaxes() > 5 else 0.0
-            return dict(fwd=-ax(1), strafe=ax(0), turn=ax(3), arm=rt - lt)
-
-        # get_pressed() is real held state -- no auto-repeat guesswork needed.
+        # Keyboard: get_pressed() is real held state, so holding a key means
+        # "keep going" rather than one impulse per press.
         k = pygame.key.get_pressed()
         axis = lambda a, b: float(k[a]) - float(k[b])
-        return dict(
+        out = dict(
             fwd=axis(pygame.K_w, pygame.K_s),
             strafe=axis(pygame.K_d, pygame.K_a),
             turn=axis(pygame.K_e, pygame.K_q),
             arm=axis(pygame.K_r, pygame.K_f),
         )
 
+        # A connected gamepad ADDS to the keyboard rather than replacing it.
+        # Returning early on self.js meant a controller that was plugged in but
+        # idle silently swallowed WASD -- and in WSL a phantom HID device is
+        # enough to trigger that.
+        if self.js:
+            ax = lambda i: deadzone(self.js.get_axis(i)) if self.js.get_numaxes() > i else 0.0
+            lt = (self.js.get_axis(4) + 1) / 2 if self.js.get_numaxes() > 4 else 0.0
+            rt = (self.js.get_axis(5) + 1) / 2 if self.js.get_numaxes() > 5 else 0.0
+            for key, v in dict(fwd=-ax(1), strafe=ax(0), turn=ax(3),
+                               arm=rt - lt).items():
+                if abs(v) > abs(out[key]):
+                    out[key] = v
+        return out
+
+    @property
+    def focused(self):
+        """Does this window have keyboard focus? If not, WASD goes nowhere."""
+        return bool(pygame.key.get_focused())
+
     def draw(self, bot, grip, arm_angle):
-        self.screen.fill((22, 24, 30))
+        # Red background when unfocused: the single most common "it doesn't
+        # work" cause is typing into the 3D window instead of this one.
+        self.screen.fill((22, 24, 30) if self.focused else (74, 26, 26))
         x, y, h = bot.pose()
         src = self.js.get_name()[:26] if self.js else "keyboard (click this window)"
 
         rows = [
+            (self.big,
+             "READY - drive it" if self.focused else "CLICK HERE FIRST",
+             (110, 220, 140) if self.focused else (255, 190, 90)),
             (self.big, f"{'FIELD-CENTRIC' if self.field_centric else 'ROBOT-CENTRIC'}",
              (110, 200, 255) if self.field_centric else (170, 175, 185)),
             (self.font, f"input   {src}", (140, 145, 155)),
@@ -146,49 +165,68 @@ def main():
         viewer.cam.distance = 2.0
         viewer.cam.elevation = -25
 
+        # Physics and rendering are decoupled. The old loop did one mj_step, one
+        # viewer.sync and one time.sleep(1.94 ms) per iteration, 500 times a
+        # second. Sleeping at that granularity is unreliable, and pygame's
+        # display.flip() can vsync-block for a whole 16 ms frame -- so the sim
+        # advanced in lurches, which is why holding a key felt like discrete
+        # nudges rather than continuous motion.
+        #
+        # Now: measure real elapsed time, run however many 2 ms physics steps
+        # fit inside it, then draw once. The command is held across every step
+        # in the batch, so holding a key really does mean "keep going".
+        FRAME = 1.0 / 60.0
+        dt_phys = model.opt.timestep
+        accumulator = 0.0
+        last = time.perf_counter()
+
         while viewer.is_running() and not inp.quit:
-            t0 = time.time()
+            now = time.perf_counter()
+            accumulator += min(now - last, 0.25)   # cap: a stall can't spiral
+            last = now
+
             s = inp.poll()
 
             if inp.reset:
                 mujoco.mj_resetData(model, data)
                 bot.stow()
                 arm_target, grip = 1.2, 0.0
+                accumulator = 0.0
 
-            fwd, strafe = s["fwd"], s["strafe"]
-            if inp.field_centric:
-                h = bot.heading()
-                fwd, strafe = (fwd * np.cos(-h) - strafe * np.sin(-h),
-                               fwd * np.sin(-h) + strafe * np.cos(-h))
-            bot.drive(fwd, strafe, s["turn"])
+            while accumulator >= dt_phys:
+                fwd, strafe = s["fwd"], s["strafe"]
+                if inp.field_centric:
+                    h = bot.heading()
+                    fwd, strafe = (fwd * np.cos(-h) - strafe * np.sin(-h),
+                                   fwd * np.sin(-h) + strafe * np.cos(-h))
+                bot.drive(fwd, strafe, s["turn"])
 
-            # Hold wherever the arm was left when the key/trigger is released.
-            if abs(s["arm"]) > 0.05:
-                manual_arm = True
-                bot.set_arm(s["arm"])
-            else:
-                if manual_arm:
-                    arm_target = float(data.joint("shoulder").qpos[0])
-                    manual_arm = False
-                bot.hold_arm(arm_target)
-            bot.level_wrist(0.0)
+                # Hold wherever the arm was left when the key/trigger is released.
+                if abs(s["arm"]) > 0.05:
+                    manual_arm = True
+                    bot.set_arm(s["arm"])
+                else:
+                    if manual_arm:
+                        arm_target = float(data.joint("shoulder").qpos[0])
+                        manual_arm = False
+                    bot.hold_arm(arm_target)
+                bot.level_wrist(0.0)
 
-            grip = min(1.0, grip + 0.05) if inp.grip_closed else max(0.0, grip - 0.05)
-            bot.set_grip(grip)
+                grip = (min(1.0, grip + 0.02) if inp.grip_closed
+                        else max(0.0, grip - 0.02))
+                bot.set_grip(grip)
 
-            bot.apply()
-            mujoco.mj_step(model, data)
+                bot.apply()
+                mujoco.mj_step(model, data)
+                accumulator -= dt_phys
 
             viewer.cam.lookat[:] = data.body("chassis").xpos
             viewer.sync()
+            inp.draw(bot, grip, float(data.joint("shoulder").qpos[0]))
 
-            if data.time - last_draw > 0.05:
-                inp.draw(bot, grip, float(data.joint("shoulder").qpos[0]))
-                last_draw = data.time
-
-            lag = model.opt.timestep - (time.time() - t0)
-            if lag > 0:
-                time.sleep(lag)
+            slack = FRAME - (time.perf_counter() - now)
+            if slack > 0:
+                time.sleep(slack)
 
     pygame.quit()
 
