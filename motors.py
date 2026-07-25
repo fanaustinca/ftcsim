@@ -15,7 +15,7 @@ zero. At power=0 with the motor still spinning you get negative torque, which is
 the braking you feel when you release the sticks with ZeroPowerBehavior.BRAKE.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import mujoco
 import numpy as np
@@ -35,16 +35,51 @@ class Motor:
     ticks_per_rev: float
     efficiency: float = 0.85
 
+    # External reduction BETWEEN the motor and the mechanism: chain and
+    # sprockets, a belt, a gear pair. 3.0 means a 3:1 reduction -- three times
+    # the torque at a third of the speed.
+    #
+    # This is separate from the gearbox already inside the motor: goBILDA quote
+    # their figures at the output shaft, so a 19.2:1 Yellow Jacket's planetary
+    # is already folded into stall_nm and free_rpm. Anything you add outside the
+    # motor goes here.
+    #
+    # CAD import does NOT give you this. The exporter sees two rotating parts
+    # and produces two independent joints; nothing in the mate tells it they are
+    # coupled by a chain. You have to state the ratio yourself.
+    external_ratio: float = 1.0
+    external_efficiency: float = 0.95      # ~0.95 chain, ~0.97 belt, ~0.90 gears
+
     @property
     def free_rads(self) -> float:
-        return self.free_rpm * 2 * np.pi / 60.0
+        """Free speed at the MECHANISM, after any external reduction."""
+        return self.free_rpm * 2 * np.pi / 60.0 / self.external_ratio
+
+    @property
+    def peak_nm(self) -> float:
+        """Stall torque at the MECHANISM, after any external reduction."""
+        return self.stall_nm * self.external_ratio * self.external_efficiency
 
     def torque(self, power: float, omega: float) -> float:
         power = float(np.clip(power, -1.0, 1.0))
-        t = self.stall_nm * (power - omega / self.free_rads)
+        peak = self.peak_nm
+        t = peak * (power - omega / self.free_rads)
         # A motor can't produce more than stall torque in either direction.
-        t = float(np.clip(t, -self.stall_nm, self.stall_nm))
+        t = float(np.clip(t, -peak, peak))
         return t * self.efficiency
+
+    def geared(self, ratio: float, efficiency: float = 0.95) -> "Motor":
+        """This motor with an external reduction bolted on.
+
+            YJ_312.geared(2.0)   # 2:1 chain to the wheels
+        """
+        return replace(self, external_ratio=ratio, external_efficiency=efficiency)
+
+    def summary(self) -> str:
+        return (f"{self.name}"
+                + (f" + {self.external_ratio:g}:1 external" if self.external_ratio != 1 else "")
+                + f"  ->  {self.free_rads * 60 / (2 * np.pi):.0f} rpm, "
+                  f"{self.peak_nm * self.efficiency:.2f} N*m at the mechanism")
 
 
 # 19.2:1, the standard FTC drivetrain choice.
