@@ -7,7 +7,8 @@
     Q / E      turn left / right       BKSP    reset robot
     R / F      arm up / down           ESC     quit
 
-    mouse drag   orbit camera          scroll  zoom
+    left drag    orbit camera          scroll  zoom
+    right drag   pan camera             HOME    recentre on robot
     TAB          cycle camera preset
 
 Plug in an Xbox-style controller and it works alongside the keyboard: left
@@ -78,6 +79,7 @@ class Sim:
         mujoco.mjv_defaultCamera(self.cam)
         self.cam_idx = 0
         self.az_offset = 0.0
+        self.pan = np.zeros(3)      # camera target offset from the robot
         self.el = CAMERAS[0][2]
         self.dist = CAMERAS[0][1]
 
@@ -110,11 +112,17 @@ class Sim:
                     self.cam_idx = (self.cam_idx + 1) % len(CAMERAS)
                     _, self.dist, self.el, _ = CAMERAS[self.cam_idx]
                     self.az_offset = 0.0
+                    self.pan[:] = 0.0
+                elif e.key == pygame.K_HOME:
+                    self.pan[:] = 0.0
+                    self.az_offset = 0.0
             elif e.type == pygame.MOUSEWHEEL:
                 self.dist = float(np.clip(self.dist * (0.9 ** e.y), 0.4, 6.0))
             elif e.type == pygame.MOUSEMOTION and e.buttons[0]:
                 self.az_offset += e.rel[0] * 0.4
                 self.el = float(np.clip(self.el - e.rel[1] * 0.3, -89, 5))
+            elif e.type == pygame.MOUSEMOTION and (e.buttons[2] or e.buttons[1]):
+                self.pan_camera(e.rel[0], e.rel[1])
             elif e.type == pygame.JOYBUTTONDOWN and self.js:
                 if e.button == 0:
                     self.grip_closed = True
@@ -142,6 +150,31 @@ class Sim:
                 if abs(v) > abs(out[key]):
                     out[key] = v
         return out
+
+    def pan_camera(self, dx, dy):
+        """Slide the camera sideways/up-down in its own screen plane.
+
+        The target is stored as an OFFSET from the robot, not an absolute
+        point, because draw() re-aims the camera at the chassis every frame --
+        an absolute target would be overwritten instantly. Storing an offset
+        means panning survives while the robot keeps being followed.
+
+        Scaled by distance so a drag moves the view the same amount on screen
+        whether you're zoomed right in or way out.
+        """
+        az = np.radians(self.cam.azimuth)
+        el = np.radians(self.cam.elevation)
+
+        # Screen-plane basis for the current camera orientation.
+        right = np.array([-np.sin(az), np.cos(az), 0.0])
+        up = np.array([-np.sin(el) * np.cos(az),
+                       -np.sin(el) * np.sin(az),
+                       np.cos(el)])
+
+        scale = self.dist * 0.0016
+        # Drag the world with the cursor: moving right pushes the target left.
+        self.pan -= right * dx * scale
+        self.pan += up * dy * scale
 
     # -- physics --------------------------------------------------------
 
@@ -180,7 +213,7 @@ class Sim:
         self.cam.azimuth = base_az + self.az_offset
         self.cam.elevation = self.el
         self.cam.distance = self.dist
-        self.cam.lookat[:] = self.data.body("chassis").xpos
+        self.cam.lookat[:] = self.data.body("chassis").xpos + self.pan
 
         self.renderer.update_scene(self.data, self.cam)
         # frombuffer avoids a full array transpose; make_surface is ~9x slower.
@@ -206,7 +239,9 @@ class Sim:
             (self.font, f"arm      {arm:+.2f} rad", (222, 226, 232)),
             (self.font, f"claw     {'CLOSED' if self.grip > 0.5 else 'open'}",
              (255, 165, 60) if self.grip > 0.5 else (222, 226, 232)),
-            (self.font, f"camera   {cam_name}", (150, 155, 165)),
+            (self.font, f"camera   {cam_name}"
+                        f"{'  (panned)' if np.linalg.norm(self.pan) > 0.01 else ''}",
+             (255, 200, 110) if np.linalg.norm(self.pan) > 0.01 else (150, 155, 165)),
             (self.font, f"{self.fps:.0f} fps"
                         f"{'  [pad]' if self.js else ''}", (120, 126, 136)),
         ]
@@ -215,7 +250,8 @@ class Sim:
             self.screen.blit(font.render(text, True, colour), (26, yy))
             yy += 21
 
-        hint = "WASD drive   QE turn   RF arm   SPACE claw   G field   TAB cam"
+        hint = ("WASD drive  QE turn  RF arm  SPACE claw  G field  |  "
+                "L-drag orbit  R-drag pan  scroll zoom  TAB cam  HOME recentre")
         surf = self.font.render(hint, True, (150, 156, 166))
         bg = pygame.Surface((surf.get_width() + 24, 30), pygame.SRCALPHA)
         bg.fill((12, 14, 18, 195))

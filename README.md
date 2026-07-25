@@ -60,8 +60,15 @@ One window. Everything is ours — keys, mouse, camera.
 | `A` / `D` | strafe left / right | `G` | toggle field-centric |
 | `Q` / `E` | turn left / right | `BKSP` | reset |
 | `R` / `F` | arm up / down | `ESC` | quit |
-| drag mouse | orbit camera | scroll | zoom |
+| left-drag | orbit camera | scroll | zoom |
+| **right-drag** | **pan camera** | `HOME` | recentre on robot |
 | `TAB` | cycle camera (chase / close / overhead / wide) | | |
+
+The camera target is stored as an *offset* from the robot rather than an
+absolute point, so panning survives while the robot keeps being followed —
+otherwise the per-frame follow would overwrite your pan instantly. Pan distance
+scales with zoom, so a drag moves the view the same amount on screen whether
+you're zoomed right in or way out.
 
 A plugged-in Xbox-style controller works *alongside* the keyboard rather than
 replacing it.
