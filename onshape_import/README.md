@@ -1,5 +1,9 @@
 # Importing a real Onshape robot
 
+> **See [../docs/CAD_PREP.md](../docs/CAD_PREP.md) for the full guide** — how the
+> exporter builds the kinematic tree, the preparation checklist, the convex
+> collision trap, and a troubleshooting table. This file is the quick reference.
+
 `onshape-to-robot` (already installed in `../.venv`) pulls an assembly straight
 from Onshape's API and writes MuJoCo MJCF, including meshes, masses and inertia
 tensors taken from the materials you assigned in CAD.

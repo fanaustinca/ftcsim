@@ -31,6 +31,8 @@ Honest state of things, so you know what you're getting:
 
 ## Install
 
+**Full instructions: [docs/SETUP.md](docs/SETUP.md)** — including troubleshooting.
+
 Requires Python 3.10+. On Windows, use WSL2 (WSLg supplies the GUI).
 
 ```bash
@@ -191,7 +193,12 @@ on real hardware. That raises your centre of gravity.
 
 ## Importing your own robot from Onshape
 
-Full instructions in [`onshape_import/README.md`](onshape_import/README.md).
+**Read [docs/CAD_PREP.md](docs/CAD_PREP.md) BEFORE you start mating your
+assembly.** Almost all the work is on the Onshape side, and fixing mates
+afterwards means redoing them. It covers how the exporter decides what is
+attached to what, the preparation checklist, the convex-collision trap, and a
+symptom-to-cause table for when it glitches.
+
 Short version:
 
 1. Get free API keys at <https://dev-portal.onshape.com/keys>, export
